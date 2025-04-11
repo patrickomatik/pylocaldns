@@ -1,18 +1,23 @@
+# Hosts file updated by Network Server Web UI
+# Last updated: 2025-04-11 18:46:34
+#
+# Format for DNS entries:
+# <IP address> <hostname1> [hostname2] [hostname3] ...
+#
+# Format for DHCP entries with MAC address:
+# <IP address> <hostname1> [hostname2] ... [MAC=aa:bb:cc:dd:ee:ff]
+#
 # Custom DNS hosts file
 #
 # Format: <IP address> <hostname1> [hostname2] [hostname3] ...
 # Comments start with #
 #
-# IPv4 examples
+
+# Static and dynamic entries
+192.168.1.111 bug.com [MAC=11:22:44:55:66:77]
 192.168.1.10 server1.local server1
 192.168.1.20 server2.local server2
 192.168.1.30 db.local database
 10.0.0.50 api.dev.local api-test
-
-# IPv6 examples
 2001:db8::1 ipv6server.local ipv6test
 2001:db8::2 ipv6db.local
-
-# Wildcards aren't natively supported by DNS, but you could
-# implement support for them in the DNS server code
-# 192.168.1.100 *.test.local

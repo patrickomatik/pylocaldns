@@ -15,6 +15,12 @@ Usage:
 
 import argparse
 import socket
+import struct
+
+try:
+    import fcntl  # Only available on Unix systems
+except ImportError:
+    fcntl = None
 import sys
 import os
 import threading
@@ -932,11 +938,13 @@ class NetworkServer:
     def __init__(self, hosts_file: HostsFile, dns_port: int = DNS_PORT,
                  interface: str = '0.0.0.0', dhcp_enable: bool = False,
                  subnet_mask: str = '255.255.255.0', router: str = None,
-                 dns_servers: List[str] = None):
+                 dns_servers: List[str] = None, webui_enable: bool = False,
+                 webui_port: int = 8080):
         self.hosts = hosts_file
         self.interface = interface
         self.dns_server = DNSServer(hosts_file, dns_port, interface)
 
+        # DHCP server
         self.dhcp_enable = dhcp_enable
         self.dhcp_server = None
 
@@ -949,6 +957,33 @@ class NetworkServer:
                 dns_servers
             )
 
+        # Web UI
+        self.webui_enable = webui_enable
+        self.webui_port = webui_port
+        self.webui_server = None
+        self.actual_webui_port = None
+
+        if webui_enable:
+            try:
+                # Import specific WebUI components - note we're only importing what we need
+                from webui import WebUIHandler, WebUIServer
+                self.webui_server = WebUIServer(
+                    hosts_file,
+                    webui_port,
+                    interface,
+                    network_server=self  # Pass a reference to self for configuration access
+                )
+            except ImportError as e:
+                logger.error(f"Could not import Web UI components: {e}")
+                logger.error("Make sure webui.py is in the same directory as network_server.py")
+                logger.info("Web UI functionality will be disabled")
+                self.webui_enable = False
+            except AttributeError as e:
+                logger.error(f"Web UI component error: {e}")
+                logger.error("There appears to be a mismatch between the WebUI module and the main program")
+                logger.info("Web UI functionality will be disabled")
+                self.webui_enable = False
+
     def start(self) -> None:
         """Start the network services."""
         # Start the DNS server in a new thread
@@ -959,6 +994,27 @@ class NetworkServer:
         if self.dhcp_enable and self.dhcp_server:
             dhcp_thread = threading.Thread(target=self.dhcp_server.start, daemon=True)
             dhcp_thread.start()
+
+        # Start the Web UI if enabled
+        webui_thread = None
+        if self.webui_enable and self.webui_server:
+            try:
+                webui_thread = self.webui_server.start()
+                self.actual_webui_port = self.webui_server.port  # Store the actual port being used
+
+                # Get local IP addresses to display more useful URLs
+                local_ips = self._get_local_ips()
+
+                # Display URLs for different interfaces
+                logger.info(f"Web UI available at:")
+                logger.info(f"  - http://localhost:{self.actual_webui_port}/")
+                for ip in local_ips:
+                    logger.info(f"  - http://{ip}:{self.actual_webui_port}/")
+
+            except Exception as e:
+                logger.error(f"Failed to start Web UI: {e}")
+                logger.info("Continuing without Web UI...")
+                self.webui_enable = False
 
         # Start a thread to monitor the hosts file for changes
         monitor_thread = threading.Thread(
@@ -982,6 +1038,9 @@ class NetworkServer:
         if self.dhcp_enable and self.dhcp_server:
             self.dhcp_server.stop()
 
+        if self.webui_enable and self.webui_server:
+            self.webui_server.stop()
+
     def _file_monitoring_thread(self) -> None:
         """Thread function to periodically check for hosts file updates."""
         while True:
@@ -990,6 +1049,49 @@ class NetworkServer:
                 time.sleep(5)  # Check every 5 seconds
             except Exception as e:
                 logger.error(f"Error in file monitoring thread: {e}")
+
+    def _get_local_ips(self) -> List[str]:
+        """Get a list of local IP addresses for this machine."""
+        ips = []
+        try:
+            # This is a platform-independent way to get all local IPs
+            if fcntl:  # Only available on Unix-like systems
+                for interface_name in socket.if_nameindex():
+                    try:
+                        # Skip loopback interfaces
+                        if 'lo' in interface_name[1]:
+                            continue
+
+                        # Get the IP address for this interface
+                        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                        ip = socket.inet_ntoa(fcntl.ioctl(
+                            s.fileno(),
+                            0x8915,  # SIOCGIFADDR
+                            struct.pack('256s', interface_name[1][:15].encode())
+                        )[20:24])
+                        s.close()
+
+                        if ip and ip != '127.0.0.1':
+                            ips.append(ip)
+                    except:
+                        pass
+            else:
+                # Fallback method for Windows and other systems
+                hostname = socket.gethostname()
+                for ip in socket.gethostbyname_ex(hostname)[2]:
+                    if not ip.startswith('127.'):
+                        ips.append(ip)
+        except Exception as e:
+            logger.debug(f"Error getting local IPs: {e}")
+
+        # If we couldn't get any IPs, add a placeholder
+        if not ips:
+            if self.interface and self.interface != '0.0.0.0':
+                ips.append(self.interface)
+            else:
+                ips.append('<server-ip>')
+
+        return ips
 
 
 def parse_ip_range(ip_range: str) -> Tuple[str, str]:
@@ -1028,6 +1130,10 @@ def main() -> None:
     parser.add_argument('--dhcp-lease-time', type=int, default=DEFAULT_LEASE_TIME,
                         help=f'DHCP lease time in seconds (default: {DEFAULT_LEASE_TIME})')
 
+    # Web UI arguments
+    parser.add_argument('--webui-enable', action='store_true', help='Enable web UI for management')
+    parser.add_argument('--webui-port', type=int, default=8080, help='Web UI port (default: 8080)')
+
     args = parser.parse_args()
 
     if args.debug:
@@ -1059,7 +1165,9 @@ def main() -> None:
             dhcp_enable=args.dhcp_enable,
             subnet_mask=args.dhcp_subnet,
             router=args.dhcp_router,
-            dns_servers=dns_servers
+            dns_servers=dns_servers,
+            webui_enable=args.webui_enable,
+            webui_port=args.webui_port
         )
 
         logger.info("Starting network services...")
