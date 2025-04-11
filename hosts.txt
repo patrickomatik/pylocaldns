@@ -1,0 +1,18 @@
+# Custom DNS hosts file
+#
+# Format: <IP address> <hostname1> [hostname2] [hostname3] ...
+# Comments start with #
+#
+# IPv4 examples
+192.168.1.10 server1.local server1
+192.168.1.20 server2.local server2
+192.168.1.30 db.local database
+10.0.0.50 api.dev.local api-test
+
+# IPv6 examples
+2001:db8::1 ipv6server.local ipv6test
+2001:db8::2 ipv6db.local
+
+# Wildcards aren't natively supported by DNS, but you could
+# implement support for them in the DNS server code
+# 192.168.1.100 *.test.local
