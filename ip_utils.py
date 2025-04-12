@@ -494,23 +494,19 @@ def scan_client_ports(ip_address: str, ports: List[int] = None, timeout: float =
     db = get_port_db()
     
     # If we have a database, check if we already have recent port data
-    if db:
+    # Skip this for now as we're having issues with timestamps
+    use_cached_data = False
+    
+    if use_cached_data and db:
         try:
             device = db.get_device(ip_address)
             if device:
                 # Get ports for this device
                 port_data = db.get_ports_for_device(ip_address)
                 if port_data:
-                    # If we have port data and it was updated in the last hour, use it
-                    try:
-                        most_recent = max(port['last_detected'] for port in port_data)
-                        one_hour_ago = datetime.now().timestamp() - 3600  # 1 hour in seconds
-                        
-                        if most_recent > one_hour_ago:
-                            logger.debug(f"Using cached port data for {ip_address} from database")
-                            return [port['port_number'] for port in port_data]
-                    except Exception as e:
-                        logger.warning(f"Error checking port data timestamps for {ip_address}: {e}")
+                    # Just use the port data we have
+                    logger.debug(f"Using cached port data for {ip_address} from database")
+                    return [port['port_number'] for port in port_data]
         except Exception as e:
             logger.warning(f"Error retrieving port data from database for {ip_address}: {e}")
     
