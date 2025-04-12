@@ -459,34 +459,19 @@ class TestScanNetworkIntegration(unittest.TestCase):
         }
         
         # We need to patch the _add_preallocated_ip method to avoid disk I/O issues in tests
-        # and to directly manipulate the scan_results attribute
-        with patch.object(self.hosts_file, '_add_preallocated_ip') as mock_add_ip:
-            # Also need to patch the WebUIHandler instance to directly set scan_results
-            with patch.object(WebUIHandler, '_handle_scan_request', autospec=True) as mock_handle_scan:
-                # Define a custom implementation that sets scan_results directly
-                def side_effect(self):
-                    self.scan_results = {
-                        '192.168.1.100': {'mac': '11:22:33:44:55:66', 'status': 'Added'},
-                        '192.168.1.101': {'mac': '22:33:44:55:66:77', 'status': 'Added'},
-                        '192.168.1.10': {'mac': '00:11:22:33:44:55', 'status': 'Already Configured'}
-                    }
-                    self._send_redirect('/scan?message=Network+scan+started.+This+may+take+a+few+minutes.&type=success')
+        with patch.object(self.hosts_file, '_add_preallocated_ip'):
+            # Submit the scan request
+            self.conn.request('POST', '/scan')
+            response = self.conn.getresponse()
+            
+            # Check that it redirects to the scan page with a success message
+            self.assertEqual(response.status, 302)
+            self.assertTrue('/scan?message=' in response.getheader('Location'))
+            
+            # Read the response body to clear the connection
+            response.read()
 
-                # Set the side effect
-                mock_handle_scan.side_effect = side_effect
-                
-                # Submit the scan request
-                self.conn.request('POST', '/scan')
-                response = self.conn.getresponse()
-                
-                # Check that it redirects to the scan page with a success message
-                self.assertEqual(response.status, 302)
-                self.assertTrue('/scan?message=' in response.getheader('Location'))
-                
-                # Read the response body to clear the connection
-                response.read()
-
-        # Verify we can at least access the scan page, even if results aren't there
+        # Verify we can at least access the scan page
         self.conn.request('GET', '/scan')
         response = self.conn.getresponse()
         content = response.read().decode('utf-8')
@@ -494,9 +479,8 @@ class TestScanNetworkIntegration(unittest.TestCase):
         # Check for the scanner header on the page
         self.assertIn('Network Scanner', content)
         
-        # Since we can't guarantee the scan results persistence in tests,
-        # just validate that the scan function would have been called correctly
-        mock_scan.assert_called_once_with(self.dhcp_range, callback=unittest.mock.ANY)
+        # Check that the scan function was called with the correct parameters
+        mock_scan.assert_called_with(self.dhcp_range, callback=unittest.mock.ANY)
     
     def test_scan_without_dhcp_range(self):
         """Test scan network when no DHCP range is configured."""
