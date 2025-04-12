@@ -21,16 +21,16 @@
                 <i class="fas fa-bars"></i>
             </button>
             <ul class="nav-links">
-                <li><a href="{{ url_for('routes.home') }}" class="{{ 'active' if request.path == '/' else '' }}">
+                <li><a href="{{ url_for('routes.home') }}" class="{{ 'active' if request.path == url_for('routes.home') else '' }}">
                     <i class="fas fa-tachometer-alt"></i> Dashboard
                 </a></li>
-                <li><a href="{{ url_for('routes.add_entry') }}" class="{{ 'active' if request.path == '/add' else '' }}">
+                <li><a href="{{ url_for('routes.add_entry') }}" class="{{ 'active' if request.path == url_for('routes.add_entry') else '' }}">
                     <i class="fas fa-plus"></i> Add Entry
                 </a></li>
-                <li><a href="{{ url_for('routes.scan_network') }}" class="{{ 'active' if request.path == '/scan' else '' }}">
+                <li><a href="{{ url_for('routes.scan_network') }}" class="{{ 'active' if request.path == url_for('routes.scan_network') else '' }}">
                     <i class="fas fa-search"></i> Scan Network
                 </a></li>
-                <li><a href="{{ url_for('routes.settings') }}" class="{{ 'active' if request.path == '/settings' else '' }}">
+                <li><a href="{{ url_for('routes.settings') }}" class="{{ 'active' if request.path == url_for('routes.settings') else '' }}">
                     <i class="fas fa-cog"></i> Settings
                 </a></li>
             </ul>

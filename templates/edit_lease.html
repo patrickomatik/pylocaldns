@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_flask.html" %}
 
 {% block title %}Edit Lease - PyLocalDNS{% endblock %}
 
@@ -23,7 +23,7 @@
                 </div>
             {% endif %}
             
-            <form method="post" action="/update-lease">
+            <form method="post" action="{{ url_for('routes.update_lease') }}">
                 <input type="hidden" name="mac" value="{{ mac }}">
 
                 <div class="form-group">
@@ -68,7 +68,7 @@
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save"></i> Update
                     </button>
-                    <a href="/" class="btn btn-plain">
+                    <a href="{{ url_for('routes.home') }}" class="btn btn-plain">
                         <i class="fas fa-times"></i> Cancel
                     </a>
                 </div>

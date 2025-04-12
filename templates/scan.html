@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base_flask.html" %}
 
 {% block title %}Network Scan - PyLocalDNS{% endblock %}
 
@@ -16,7 +16,7 @@
             <h2 class="card-title"><i class="fas fa-search"></i> Scan Network</h2>
         </div>
         <div class="card-body">
-            <form method="post" action="/scan">
+            <form method="post" action="{{ url_for('routes.handle_scan_request') }}">
                 <p>This will scan the entire DHCP range for active devices. Discovered devices will be added to the 
                 configuration automatically. This process may take a few minutes depending on the size of your network.</p>
                 
@@ -24,7 +24,7 @@
                     <button type="submit" class="btn btn-warning">
                         <i class="fas fa-search"></i> Start Network Scan
                     </button>
-                    <a href="/" class="btn btn-plain">
+                    <a href="{{ url_for('routes.home') }}" class="btn btn-plain">
                         <i class="fas fa-times"></i> Cancel
                     </a>
                 </div>
@@ -78,7 +78,7 @@
                                 </td>
                                 <td>
                                     {% if mac and mac != 'Unknown' %}
-                                        <a href="/edit?mac={{ mac }}" class="btn btn-sm btn-edit">
+                                        <a href="{{ url_for('routes.edit_entry', mac=mac) }}" class="btn btn-sm btn-edit">
                                             <i class="fas fa-edit"></i> Edit
                                         </a>
                                     {% endif %}

@@ -25,7 +25,7 @@
                 </div>
             {% endif %}
             
-            <form method="post" action="/save-settings">
+            <form method="post" action="{{ url_for('routes.settings') }}">
                 <div class="checkbox-group mb-4">
                     <input type="checkbox" id="dhcp_enabled" name="dhcp_enabled" value="yes" {% if dhcp_enabled %}checked{% endif %}>
                     <label for="dhcp_enabled">Enable DHCP Server</label>
@@ -68,7 +68,7 @@
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-save"></i> Save Settings
                     </button>
-                    <a href="/" class="btn btn-plain">
+                    <a href="{{ url_for('routes.home') }}" class="btn btn-plain">
                         <i class="fas fa-times"></i> Cancel
                     </a>
                 </div>
