@@ -8,7 +8,16 @@ This module provides methods for scanning the network and displaying the results
 import threading
 import logging
 import re
+from datetime import datetime
 from webui_core import HTML_HEADER, HTML_FOOTER
+
+# Try to import port database functions
+try:
+    from port_database import get_port_db
+    USE_PORT_DB = True
+except ImportError:
+    USE_PORT_DB = False
+    get_port_db = lambda: None
 
 # Setup logging
 logger = logging.getLogger('webui_scan')
@@ -79,7 +88,7 @@ def render_scan_page(self, message=None, message_type=None):
                     <td>{mac} {self._format_vendor(mac) if hasattr(self, '_format_vendor') else ''}</td>
                     <td>{status_badge}</td>
                     <td>
-                        {self._format_ports(ports)}
+                        {self._format_ports(ports) if hasattr(self, '_format_ports') else ', '.join(map(str, ports)) if ports else 'None detected'}
                     </td>
                     <td>
                         {edit_button}
@@ -128,6 +137,21 @@ def handle_scan_request(self):
                         status = "Pre-allocated"
                     else:
                         # This is a newly discovered device, add it as pre-allocated
+                        # Also add to port database if available
+                        if USE_PORT_DB:
+                            db = get_port_db()
+                            try:
+                                # Add device to database
+                                db.add_or_update_device(ip, device_info.get('mac'))
+                                
+                                # Add ports to database
+                                if 'ports' in device_info and device_info['ports']:
+                                    port_list = device_info['ports']
+                                    db.bulk_update_ports(ip, port_list)
+                            except Exception as e:
+                                logger.error(f"Error updating port database for {ip}: {e}")
+                        
+                        # Add to hosts file
                         self.hosts_file._add_preallocated_ip(ip, device_info)
                         status = "Added"
                     

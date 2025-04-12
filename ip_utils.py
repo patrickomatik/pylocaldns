@@ -13,7 +13,10 @@ import logging
 import subprocess
 import sys
 import threading
+import time
+from datetime import datetime
 from typing import List, Dict, Optional, Set, Tuple, Any
+from ipaddress import IPv4Address
 
 # Setup logging
 logging.basicConfig(
@@ -22,33 +25,135 @@ logging.basicConfig(
 )
 logger = logging.getLogger('ip_utils')
 
+# Import our port database module
+try:
+    from port_database import get_port_db
+except ImportError:
+    logger.warning("Port database module not available; port data will not be stored persistently")
+    get_port_db = lambda: None
+
 # Common ports to check for active devices
 COMMON_PORTS = [
     # Web servers
-    80, 443, 8080, 8443, 8000, 8081, 8181, 3000, 
+    80, 443, 8080, 8443, 8000, 8081, 8181, 3000, 4000, 8082, 9000, 9001, 9090, 9091, 8888, 8889,
     # Remote access
-    22, 23, 3389, 5900, 5901, 5800,
+    22, 23, 3389, 5900, 5901, 5800, 5000, 5001, 2222, 2200, 222,
     # Windows services
-    445, 139, 135, 389, 636,
+    445, 139, 135, 389, 636, 3268, 3269, 88, 464, 49152, 49153, 49154,
     # Email and messaging
-    25, 587, 465, 110, 143, 993, 995,
+    25, 587, 465, 110, 143, 993, 995, 389, 1025, 1026, 1027, 1028, 1029,
     # File transfer
-    21, 115, 990, 989,
+    21, 115, 990, 989, 2049, 20, 989, 990,
     # Databases
-    1433, 3306, 5432, 6379, 27017, 9200,
+    1433, 3306, 5432, 6379, 27017, 9200, 1521, 1830, 50000, 1010, 1011, 1012, 1158, 5984, 5985, 7474, 7687,
     # IoT and smart home
-    1883, 8883, 5683, 5684,
+    1883, 8883, 5683, 5684, 8086, 8087, 8088, 8089, 8090, 8091, 8092, 8093, 8094, 8095, 8123, 8124, 8125,
     # Media streaming
-    8096, 32400, 8123, 554,
+    8096, 32400, 8123, 554, 1900, 8200, 8201, 8202, 8203, 8204, 8205, 8206, 8207, 8208, 8209, 9777, 9876, 9080, 9081,
     # Print services
-    631, 515, 9100,
+    631, 515, 9100, 9101, 9102, 9103, 9104, 9105, 9106, 9107, 9108, 9109,
     # Network services
-    53, 67, 68, 123, 161, 162, 1900, 5353,
+    53, 67, 68, 123, 161, 162, 1900, 5353, 49152, 49153, 49154, 49155, 49156, 49157, 49158, 49159, 49160, 5060, 5061,
     # VPN and routing
-    500, 4500, 1194, 51820, 1701, 1723,
+    500, 4500, 1194, 51820, 1701, 1723, 1724, 4500, 500, 4400, 4401, 4402, 4403,
     # Game servers
-    25565, 27015, 7777
+    25565, 27015, 7777, 7778, 7779, 7780, 7781, 7782, 7783, 7784, 7785, 7786, 7787, 7788, 7789, 7790, 7791, 3478, 3479, 3480, 3724,
+    # Monitoring
+    9090, 9091, 9092, 9093, 9094, 9095, 9096, 9097, 9098, 9099, 3000, 3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009,
+    # Container platforms
+    2375, 2376, 2377, 4243, 4244, 4245, 4246, 4247, 4248, 4249, 4250, 8086, 10250, 10251, 10252, 10253, 10254, 10255, 10256, 10257, 10258, 10259,
+    # Additional common services
+    111, 179, 427, 548, 902, 5009, 5222, 5269, 6000, 6001, 6002, 6003, 6004, 6005, 6006, 6007, 6008, 6009
 ]
+
+# Map of port numbers to service names
+PORT_SERVICES = {
+    20: "FTP (Data)",
+    21: "FTP (Control)",
+    22: "SSH",
+    23: "Telnet",
+    25: "SMTP",
+    53: "DNS",
+    67: "DHCP (Server)",
+    68: "DHCP (Client)",
+    80: "HTTP",
+    88: "Kerberos",
+    110: "POP3",
+    111: "NFS/RPC",
+    115: "SFTP",
+    119: "NNTP",
+    123: "NTP",
+    135: "RPC",
+    137: "NetBIOS Name",
+    138: "NetBIOS Datagram",
+    139: "NetBIOS Session",
+    143: "IMAP",
+    161: "SNMP",
+    162: "SNMP Trap",
+    179: "BGP",
+    389: "LDAP",
+    427: "SLP",
+    443: "HTTPS",
+    445: "SMB/CIFS",
+    464: "Kerberos",
+    465: "SMTPS",
+    500: "IKE/IPsec",
+    515: "LPD/LPR",
+    548: "AFP",
+    554: "RTSP",
+    587: "SMTP (Submission)",
+    631: "IPP",
+    636: "LDAPS",
+    989: "FTPS (Data)",
+    990: "FTPS (Control)",
+    993: "IMAPS",
+    995: "POP3S",
+    1194: "OpenVPN",
+    1433: "MS SQL",
+    1521: "Oracle DB",
+    1701: "L2TP",
+    1723: "PPTP",
+    1883: "MQTT",
+    1900: "UPNP",
+    2049: "NFS",
+    2082: "cPanel",
+    2083: "cPanel SSL",
+    2222: "SSH (Alt)",
+    2375: "Docker API",
+    2376: "Docker API (SSL)",
+    3000: "Grafana",
+    3306: "MySQL",
+    3389: "RDP",
+    3724: "Blizzard Games",
+    3478: "STUN/TURN",
+    5000: "UPnP",
+    5001: "Synology DSM",
+    5060: "SIP",
+    5222: "XMPP",
+    5353: "mDNS",
+    5432: "PostgreSQL",
+    5683: "CoAP",
+    5900: "VNC",
+    5984: "CouchDB",
+    6379: "Redis",
+    6881: "BitTorrent",
+    8000: "Web Alt",
+    8080: "HTTP Proxy",
+    8083: "Proxy",
+    8086: "InfluxDB",
+    8096: "Jellyfin",
+    8123: "Home Assistant",
+    8443: "HTTPS Alt",
+    8883: "MQTT (SSL)",
+    9000: "Portainer",
+    9090: "Prometheus",
+    9091: "Transmission",
+    9100: "Printer Job",
+    9200: "Elasticsearch",
+    27017: "MongoDB",
+    32400: "Plex",
+    51820: "WireGuard"
+}
 
 
 def is_ip_in_use(ip_address: str, timeout: float = 1.0) -> bool:
@@ -249,7 +354,7 @@ def get_arp_output(ip_address: str) -> Optional[str]:
         return None
 
 
-def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Dict[str, Any]]:
+def scan_network_async(ip_range: Tuple[str, str], callback=None, use_db=True, scan_name=None) -> Dict[str, Dict[str, Any]]:
     """
     Scan a range of IP addresses asynchronously to find devices.
     
@@ -260,13 +365,16 @@ def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Di
     Args:
         ip_range: Tuple with start and end IP addresses
         callback: Optional progress callback function
+        use_db: Whether to store results in the port database
+        scan_name: Optional name to identify this scan in the database
         
     Returns:
         Dictionary mapping IP addresses to dictionaries containing:
         - 'mac': MAC address (or None if not found)
         - 'ports': List of open ports
     """
-    from ipaddress import IPv4Address
+    # Get the port database if we're using it
+    port_db = get_port_db() if use_db else None
     
     # Convert IP strings to integers
     start_int = int(IPv4Address(ip_range[0]))
@@ -283,8 +391,13 @@ def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Di
     scanned_count = 0
     progress_lock = threading.Lock()
     
+    # Keep track of total ports found (for database record)
+    total_devices = 0
+    total_ports = 0
+    stats_lock = threading.Lock()
+    
     def scan_worker(ip: str) -> None:
-        nonlocal scanned_count
+        nonlocal scanned_count, total_devices, total_ports
         
         # Check if IP is in use
         if is_ip_in_use(ip, timeout=0.5):
@@ -297,8 +410,32 @@ def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Di
             with results_lock:
                 results[ip] = {
                     'mac': mac,
-                    'ports': open_ports
+                    'ports': open_ports,
+                    'hostname': None  # We don't have hostname information yet
                 }
+            
+            # Update database if enabled
+            if port_db:
+                try:
+                    # Add or update device
+                    port_db.add_or_update_device(ip, mac)
+                    
+                    # Add service names for well-known ports
+                    port_services = {}
+                    for port in open_ports:
+                        if port in PORT_SERVICES:
+                            port_services[port] = PORT_SERVICES[port]
+                    
+                    # Bulk update ports for this device
+                    port_db.bulk_update_ports(ip, open_ports, port_services)
+                    
+                except Exception as e:
+                    logger.error(f"Error updating port database for {ip}: {e}")
+            
+            # Update stats for the database record
+            with stats_lock:
+                total_devices += 1
+                total_ports += len(open_ports)
         
         # Update progress
         with progress_lock:
@@ -329,10 +466,17 @@ def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Di
     if callback:
         callback(total_ips, total_ips)
     
+    # Record the scan in the database
+    if port_db:
+        try:
+            port_db.record_scan(total_devices, total_ports)
+        except Exception as e:
+            logger.error(f"Error recording scan in database: {e}")
+    
     return results
 
 
-def scan_client_ports(ip_address: str, ports: List[int] = None) -> List[int]:
+def scan_client_ports(ip_address: str, ports: List[int] = None, timeout: float = 0.2, max_ports: int = 30) -> List[int]:
     """
     Scan specific ports on an IP address to see if they're open.
     
@@ -341,25 +485,103 @@ def scan_client_ports(ip_address: str, ports: List[int] = None) -> List[int]:
     Args:
         ip_address: The IP address to scan
         ports: List of ports to check, or None to check common ports
+        timeout: Timeout for each connection attempt in seconds
+        max_ports: Maximum number of ports to return (to avoid overloading the UI)
         
     Returns:
         List of open port numbers
     """
+    db = get_port_db()
+    
+    # If we have a database, check if we already have recent port data
+    if db:
+        try:
+            device = db.get_device(ip_address)
+            if device:
+                # Get ports for this device
+                port_data = db.get_ports_for_device(ip_address)
+                if port_data:
+                    # If we have port data and it was updated in the last hour, use it
+                    try:
+                        most_recent = max(port['last_detected'] for port in port_data)
+                        one_hour_ago = datetime.now().timestamp() - 3600  # 1 hour in seconds
+                        
+                        if most_recent > one_hour_ago:
+                            logger.debug(f"Using cached port data for {ip_address} from database")
+                            return [port['port_number'] for port in port_data]
+                    except Exception as e:
+                        logger.warning(f"Error checking port data timestamps for {ip_address}: {e}")
+        except Exception as e:
+            logger.warning(f"Error retrieving port data from database for {ip_address}: {e}")
+    
+    # Otherwise, perform the scan
     if ports is None:
         ports = COMMON_PORTS
     
+    # Use threading to speed up the scan
     open_ports = []
-    for port in ports:
+    open_ports_lock = threading.Lock()
+    
+    def check_port(port):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.2)  # Short timeout
+                s.settimeout(timeout)  # Short timeout
                 result = s.connect_ex((ip_address, port))
                 if result == 0:  # Port is open
-                    open_ports.append(port)
+                    with open_ports_lock:
+                        open_ports.append(port)
+                        
+                        # Update the database if available
+                        if db:
+                            try:
+                                service_name = PORT_SERVICES.get(port)
+                                db.add_or_update_port(ip_address, port, service_name)
+                            except Exception as e:
+                                logger.error(f"Error updating port database for {ip_address}:{port}: {e}")
         except:
             pass  # Ignore errors and continue
     
-    return open_ports
+    # Create and start threads (max 20 threads at a time to avoid overwhelming the network)
+    threads = []
+    max_threads = 20
+    
+    for port in ports:
+        thread = threading.Thread(target=check_port, args=(port,))
+        thread.daemon = True
+        threads.append(thread)
+        thread.start()
+        
+        # Limit concurrent threads
+        if len(threads) >= max_threads:
+            for t in threads:
+                t.join(timeout=0.1)
+            threads = [t for t in threads if t.is_alive()]
+    
+    # Wait for all threads to complete
+    for t in threads:
+        t.join()
+    
+    # Sort the ports and limit to max_ports
+    sorted_ports = sorted(open_ports)
+    if max_ports > 0 and len(sorted_ports) > max_ports:
+        logger.info(f"Found {len(sorted_ports)} open ports on {ip_address}, limiting to {max_ports} most common ones")
+        # Prioritize common service ports over high-numbered ports
+        # Create a scoring function based on port commonality
+        def port_score(port):
+            # Known common service ports get higher priority (lower score = higher priority)
+            if port in [80, 443, 22, 21, 25, 53, 110, 143, 3389, 445, 139, 8080]:
+                return 0
+            elif port < 1024:  # Well-known ports
+                return 1
+            elif port < 10000:  # Registered ports
+                return 2
+            else:  # Dynamic/private ports
+                return 3
+        
+        # Sort by score and then by port number
+        return sorted(sorted_ports, key=lambda p: (port_score(p), p))[:max_ports]
+    
+    return sorted_ports
 
 
 def is_same_client_requesting(mac_address: str, ip_address: str) -> bool:
@@ -383,6 +605,80 @@ def is_same_client_requesting(mac_address: str, ip_address: str) -> bool:
     return current_mac.lower() == mac_address.lower()
 
 
+def get_device_ports_from_db(ip_address: str) -> List[int]:
+    """
+    Get open ports for a device from the database.
+    
+    Args:
+        ip_address: The IP address to look up
+        
+    Returns:
+        List of port numbers or empty list if not found
+    """
+    db = get_port_db()
+    if not db:
+        return []
+    
+    try:
+        ports = db.get_ports_for_device(ip_address)
+        return [port['port_number'] for port in ports] if ports else []
+    except Exception as e:
+        logger.error(f"Error getting ports from database for {ip_address}: {e}")
+        return []
+
+
+def get_active_devices_with_ports() -> Dict[str, Dict[str, Any]]:
+    """
+    Get all active devices with their open ports from the database.
+    
+    Returns:
+        Dictionary mapping IP addresses to device info and ports
+    """
+    db = get_port_db()
+    if not db:
+        return {}
+    
+    try:
+        devices = db.get_all_devices_with_ports()
+        result = {}
+        
+        for device in devices:
+            ip = device['ip_address']
+            result[ip] = {
+                'mac': device['mac_address'],
+                'hostname': device['hostname'],
+                'first_seen': device['first_seen'],
+                'last_seen': device['last_seen'],
+                'ports': [port['port_number'] for port in device['ports']]
+            }
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error getting devices with ports from database: {e}")
+        return {}
+
+
+def refresh_port_data(ip_address: str, force=False) -> List[int]:
+    """
+    Refresh port data for a device in the database.
+    
+    Args:
+        ip_address: The IP address of the device
+        force: If True, do a fresh scan even if we have recent data
+        
+    Returns:
+        List of open port numbers
+    """
+    if not force:
+        # Check if we have recent data
+        ports = get_device_ports_from_db(ip_address)
+        if ports:
+            return ports
+    
+    # Do a fresh scan
+    return scan_client_ports(ip_address)
+
+
 if __name__ == "__main__":
     # Example usage
     import sys
@@ -397,6 +693,14 @@ if __name__ == "__main__":
         open_ports = scan_client_ports(test_ip)
         if open_ports:
             print(f"Open ports: {', '.join(map(str, open_ports))}")
+            
+            # Check if we have service names for these ports
+            for port in open_ports:
+                service = PORT_SERVICES.get(port)
+                if service:
+                    print(f"  Port {port}: {service}")
+                else:
+                    print(f"  Port {port}: Unknown service")
         else:
             print("No open ports found")
         
@@ -405,5 +709,14 @@ if __name__ == "__main__":
             print(f"MAC address: {mac}")
         else:
             print("MAC address not found")
+            
+        # If we have a database, show device info
+        db = get_port_db()
+        if db:
+            device = db.get_device_with_ports(test_ip)
+            if device:
+                print(f"Device in database: {device['ip_address']} ({device['mac_address']})")
+                print(f"Last seen: {device['last_seen']}")
+                print(f"Open ports in database: {', '.join(str(p['port_number']) for p in device['ports'])}")
     else:
         print("Please provide an IP address to test")

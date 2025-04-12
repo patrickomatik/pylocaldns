@@ -185,6 +185,25 @@ HTML_HEADER = """<!DOCTYPE html>
         /* Port styling */
         .port-list {
             font-size: 0.9em;
+            max-width: 100%;
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 5px;
+            background-color: #fafafa;
+        }
+        .port-category {
+            margin-bottom: 5px;
+            padding: 4px;
+            border-bottom: 1px solid #eee;
+        }
+        .port-category:last-child {
+            border-bottom: none;
+        }
+        .port-category-name {
+            font-weight: bold;
+            color: #555;
         }
         .port {
             display: inline-block;
@@ -253,28 +272,85 @@ class WebUIHandler(BaseHTTPRequestHandler):
         23: "Telnet",
         25: "SMTP",
         53: "DNS",
+        67: "DHCP (Server)",
+        68: "DHCP (Client)",
         80: "HTTP",
+        88: "Kerberos",
         110: "POP3",
+        111: "NFS/RPC",
+        115: "SFTP",
+        119: "NNTP",
         123: "NTP",
-        139: "NetBIOS",
+        135: "RPC",
+        137: "NetBIOS Name",
+        138: "NetBIOS Datagram",
+        139: "NetBIOS Session",
         143: "IMAP",
         161: "SNMP",
+        162: "SNMP Trap",
+        179: "BGP",
+        389: "LDAP",
+        427: "SLP",
         443: "HTTPS",
-        445: "SMB",
+        445: "SMB/CIFS",
+        464: "Kerberos",
         465: "SMTPS",
+        500: "IKE/IPsec",
+        515: "LPD/LPR",
+        548: "AFP",
+        554: "RTSP",
         587: "SMTP (Submission)",
+        631: "IPP",
+        636: "LDAPS",
+        989: "FTPS (Data)",
+        990: "FTPS (Control)",
         993: "IMAPS",
         995: "POP3S",
         1194: "OpenVPN",
         1433: "MS SQL",
+        1521: "Oracle DB",
+        1701: "L2TP",
         1723: "PPTP",
+        1883: "MQTT",
+        1900: "UPNP",
+        2049: "NFS",
+        2082: "cPanel",
+        2083: "cPanel SSL",
+        2222: "SSH (Alt)",
+        2375: "Docker API",
+        2376: "Docker API (SSL)",
+        3000: "Grafana",
         3306: "MySQL",
         3389: "RDP",
+        3724: "Blizzard Games",
+        3478: "STUN/TURN",
         5000: "UPnP",
+        5001: "Synology DSM",
+        5060: "SIP",
+        5222: "XMPP",
+        5353: "mDNS",
         5432: "PostgreSQL",
+        5683: "CoAP",
         5900: "VNC",
-        8080: "HTTP (Alt)",
-        8443: "HTTPS (Alt)"
+        5984: "CouchDB",
+        6379: "Redis",
+        6881: "BitTorrent",
+        8000: "Web Alt",
+        8080: "HTTP Proxy",
+        8083: "Proxy",
+        8086: "InfluxDB",
+        8096: "Jellyfin",
+        8123: "Home Assistant",
+        8443: "HTTPS Alt",
+        8883: "MQTT (SSL)",
+        9000: "Portainer",
+        9090: "Prometheus",
+        9091: "Transmission",
+        9100: "Printer Job",
+        9200: "Elasticsearch",
+        27017: "MongoDB",
+        32400: "Plex",
+        51820: "WireGuard"
     }
 
     def __init__(self, *args, hosts_file=None, network_server=None, **kwargs):
@@ -333,20 +409,62 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 ports = [int(ports)]
             except (ValueError, TypeError):
                 return "<span class='no-ports'>Invalid port format</span>"
-            
-        result = []
+        
+        # Group ports by service category
+        categories = {
+            'Web Services': [80, 443, 8080, 8443, 8000, 3000, 8081, 8082, 8083, 8001, 8002, 9000, 9001, 9002],
+            'Remote Access': [22, 23, 3389, 5900, 5901, 5800, 2222],
+            'File Sharing': [21, 445, 139, 2049, 548, 990, 989],
+            'Database': [1433, 3306, 5432, 6379, 27017, 9200, 1521],
+            'Email': [25, 587, 465, 110, 143, 993, 995],
+            'Media': [32400, 8096, 8123, 554, 1900],
+            'Network': [53, 67, 68, 123, 161, 5353, 5060, 5061],
+            'Other': []
+        }
+        
+        # Categorize ports
+        categorized_ports = {cat: [] for cat in categories}
+        
         for port in sorted(ports):
             # Convert to int if it's a string
             if isinstance(port, str) and port.isdigit():
                 port = int(port)
+            
+            # Find category
+            found_category = False
+            for category, category_ports in categories.items():
+                if port in category_ports:
+                    categorized_ports[category].append(port)
+                    found_category = True
+                    break
+            
+            if not found_category:
+                categorized_ports['Other'].append(port)
+        
+        # Build HTML
+        result = ['<div class="port-list">']  
+        
+        for category, cat_ports in categorized_ports.items():
+            if not cat_ports:  # Skip empty categories
+                continue
                 
-            if port in self.PORT_DESCRIPTIONS:
-                service = self.PORT_DESCRIPTIONS[port]
-                result.append(f"<span class='port port-known' title='{service}'>{port} ({service})</span>")
-            else:
-                result.append(f"<span class='port'>{port}</span>")
-                
-        return "<div class='port-list'>" + ", ".join(result) + "</div>"
+            # Add category header if there are ports in this category
+            result.append(f'<div class="port-category"><span class="port-category-name">{category}:</span> ')
+            
+            # Add ports
+            port_spans = []
+            for port in sorted(cat_ports):
+                if port in self.PORT_DESCRIPTIONS:
+                    service = self.PORT_DESCRIPTIONS[port]
+                    port_spans.append(f"<span class='port port-known' title='{service}'>{port} ({service})</span>")
+                else:
+                    port_spans.append(f"<span class='port'>{port}</span>")
+            
+            result.append(", ".join(port_spans))
+            result.append('</div>')
+            
+        result.append('</div>')
+        return "\n".join(result)
 
     def _send_response(self, content, content_type='text/html'):
         """Send an HTTP response with the specified content."""

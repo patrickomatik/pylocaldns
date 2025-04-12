@@ -8,42 +8,69 @@ This module provides methods for rendering the HTML pages of the Web UI.
 import time
 import ipaddress
 import re
+import logging
 from webui_core import HTML_HEADER, HTML_FOOTER
+
+# Import the port database
+try:
+    from port_database import get_port_db
+    from ip_utils import get_device_ports_from_db, refresh_port_data, PORT_SERVICES
+    USE_PORT_DB = True
+except ImportError:
+    USE_PORT_DB = False
+    get_port_db = lambda: None
+    get_device_ports_from_db = lambda ip: []
+    refresh_port_data = lambda ip, force=False: []
+    PORT_SERVICES = {}
+
+# Setup logging
+logger = logging.getLogger('webui_pages')
 
 # Default DHCP lease time (24 hours in seconds)
 DEFAULT_LEASE_TIME = 86400
 
 
-def render_home_page(self, message=None, message_type=None):
+def render_home_page(self, message=None, message_type=None, htmx_request=False):
     """Render the home page."""
     static_entries = []
     dynamic_leases = []
+
+    port_db = get_port_db() if USE_PORT_DB else None
 
     # Get static entries from hosts file
     if self.hosts_file:
         for mac, ip in self.hosts_file.mac_to_ip.items():
             hostnames = self.hosts_file.get_hostnames_for_ip(ip)
             
-            # Check for port information in hostnames
+            # Get port information from the database if available
             ports = []
-            display_hostnames = []
-            for hostname in hostnames:
-                if hostname.startswith('ports-'):
-                    try:
-                        # Extract port numbers from the tag
-                        port_list = hostname[6:].split(',')
-                        ports = [int(p) for p in port_list if p.isdigit()]
-                    except (ValueError, IndexError):
-                        # Fallback: try to parse as a single string with numbers
+            if port_db:
+                # Try to refresh port data - the function will use cached data if available
+                try:
+                    ports = refresh_port_data(ip)
+                except Exception as e:
+                    logger.error(f"Error refreshing port data for {ip}: {e}")
+            
+            # If database not available or refresh failed, fall back to the hosts file method
+            if not ports and hostnames:
+                # Extract port information from hostnames if any has 'ports-' prefix
+                for hostname in hostnames:
+                    if hostname.startswith('ports-'):
                         try:
-                            # Try to extract numbers from the hostname
-                            port_nums = re.findall(r'\d+', hostname[6:])
-                            if port_nums:
-                                ports = [int(p) for p in port_nums]
-                        except Exception:
-                            pass
-                elif hostname != 'preallocated':
-                    display_hostnames.append(hostname)
+                            # Extract port numbers from the tag
+                            port_list = hostname[6:].split(',')
+                            ports = [int(p) for p in port_list if p.isdigit()]
+                        except (ValueError, IndexError):
+                            # Fallback: try to parse as a single string with numbers
+                            try:
+                                port_nums = re.findall(r'\d+', hostname[6:])
+                                if port_nums:
+                                    ports = [int(p) for p in port_nums]
+                            except Exception:
+                                pass
+            
+            # Filter out port tags from display hostnames
+            display_hostnames = [h for h in hostnames if not h.startswith('ports-') and h != 'preallocated']
             
             entry = {
                 'mac': mac,
@@ -62,26 +89,31 @@ def render_home_page(self, message=None, message_type=None):
                 hours, remainder = divmod(remaining, 3600)
                 minutes, seconds = divmod(remainder, 60)
                 
-                # Check for port information in hostnames
+                # Get port information (similar to static entries)
                 ports = []
-                display_hostnames = []
-                for hostname in hostnames:
-                    if hostname.startswith('ports-'):
-                        try:
-                            # Extract port numbers from the tag
-                            port_list = hostname[6:].split(',')
-                            ports = [int(p) for p in port_list if p.isdigit()]
-                        except (ValueError, IndexError):
-                            # Fallback: try to parse as a single string with numbers
+                if port_db:
+                    try:
+                        ports = refresh_port_data(lease.ip_address)
+                    except Exception as e:
+                        logger.error(f"Error refreshing port data for {lease.ip_address}: {e}")
+                
+                # Fall back to hosts file method if needed
+                if not ports and hostnames:
+                    for hostname in hostnames:
+                        if hostname.startswith('ports-'):
                             try:
-                                # Try to extract numbers from the hostname
-                                port_nums = re.findall(r'\d+', hostname[6:])
-                                if port_nums:
-                                    ports = [int(p) for p in port_nums]
-                            except Exception:
-                                pass
-                    elif hostname != 'preallocated':
-                        display_hostnames.append(hostname)
+                                port_list = hostname[6:].split(',')
+                                ports = [int(p) for p in port_list if p.isdigit()]
+                            except (ValueError, IndexError):
+                                try:
+                                    port_nums = re.findall(r'\d+', hostname[6:])
+                                    if port_nums:
+                                        ports = [int(p) for p in port_nums]
+                                except Exception:
+                                    pass
+                
+                # Filter display hostnames
+                display_hostnames = [h for h in hostnames if not h.startswith('ports-') and h != 'preallocated']
 
                 dynamic_leases.append({
                     'mac': mac,
@@ -92,8 +124,16 @@ def render_home_page(self, message=None, message_type=None):
                     'ports': ports
                 })
 
-    # Build the page content
+    # If this is an HTMX request, only return the tables
+    if htmx_request:
+        return _render_home_page_content(self, static_entries, dynamic_leases).encode()
+
+    # Build the full page content
     content = HTML_HEADER
+
+    # Include HTMX library
+    content = content.replace('</head>',
+                            '    <script src="https://unpkg.com/htmx.org@1.9.10"></script>\n</head>')
 
     # Display message if any
     if message:
@@ -102,7 +142,28 @@ def render_home_page(self, message=None, message_type=None):
     content += """
         <h1>Network Server Admin</h1>
         <p>View and manage MAC, IP, and DNS entries.</p>
+        
+        <div id="dashboard-content" hx-get="/dashboard-content" hx-trigger="every 10s" hx-swap="innerHTML">
+    """
+    
+    # Add the tables
+    content += _render_home_page_content(self, static_entries, dynamic_leases)
+    
+    content += """
+        </div>
+    """
+    
+    content += HTML_FOOTER
+    
+    # Modify the footer to remove the auto-refresh JavaScript
+    content = content.replace('// Auto-refresh the page every 30 seconds\n        setTimeout(function() {\n            location.reload();\n        }, 30000);', '')
+    
+    return content.encode()
 
+
+def _render_home_page_content(self, static_entries, dynamic_leases):
+    """Render just the tables for the home page (for HTMX updates)."""
+    content = """
         <h2>Static Entries</h2>
     """
 
@@ -125,7 +186,7 @@ def render_home_page(self, message=None, message_type=None):
                 <td>{entry['ip']}</td>
                 <td>{entry['hostnames']}</td>
                 <td>
-                    {self._format_ports(entry['ports'])}
+                    {self._format_ports(entry['ports']) if hasattr(self, '_format_ports') else ', '.join(map(str, entry['ports'])) if entry['ports'] else 'None detected'}
                 </td>
                 <td>
                     <a href="/edit?mac={entry['mac']}" class="btn btn-edit">Edit</a>
@@ -164,7 +225,7 @@ def render_home_page(self, message=None, message_type=None):
                 <td>{lease['hostname']}</td>
                 <td>{lease['hostnames']}</td>
                 <td>
-                    {self._format_ports(lease['ports'])}
+                    {self._format_ports(lease['ports']) if hasattr(self, '_format_ports') else ', '.join(map(str, lease['ports'])) if lease['ports'] else 'None detected'}
                 </td>
                 <td>{lease['expires']}</td>
                 <td>
@@ -177,9 +238,19 @@ def render_home_page(self, message=None, message_type=None):
         content += "</table>"
     else:
         content += "<p>No active DHCP leases found.</p>"
-
-    content += HTML_FOOTER
-    return content.encode()
+        
+    # Add button to force refresh ports if using database
+    if USE_PORT_DB:
+        content += """
+        <div style="margin-top: 20px;">
+            <button class="btn" hx-post="/scan-ports" hx-target="#dashboard-content" hx-indicator="#scan-indicator">
+                Refresh Open Ports
+            </button>
+            <span id="scan-indicator" class="htmx-indicator">Scanning ports...</span>
+        </div>
+        """
+        
+    return content
 
 
 def render_edit_page(self, mac_address):
@@ -222,7 +293,7 @@ def render_edit_page_with_data(self, mac_address, original_ip, ip_address, hostn
 
             <div class="form-group">
                 <label for="hostnames">Hostnames (comma-separated):</label>
-                <input type="text" id="hostnames" name="hostnames" value="{', '.join(hostnames) if hostnames else ''}">
+                <input type="text" id="hostnames" name="hostnames" value="{', '.join([h for h in hostnames if not h.startswith('ports-') and h != 'preallocated']) if hostnames else ''}">
             </div>
 
             <div class="form-group">
@@ -302,6 +373,9 @@ def render_edit_lease_page_with_data(self, mac_address, lease, hostnames, lease_
     # Check if make_static should be checked
     make_static_checked = "checked" if make_static else ""
 
+    # Filter out port-related hostnames for display
+    display_hostnames = [h for h in hostnames if not h.startswith('ports-') and h != 'preallocated']
+
     content += f"""
         <h1>Edit DHCP Lease</h1>
         <form method="post" action="/update-lease">
@@ -324,7 +398,7 @@ def render_edit_lease_page_with_data(self, mac_address, lease, hostnames, lease_
 
             <div class="form-group">
                 <label for="hostnames">DNS Names (comma-separated):</label>
-                <input type="text" id="hostnames" name="hostnames" value="{', '.join(hostnames) if hostnames else ''}">
+                <input type="text" id="hostnames" name="hostnames" value="{', '.join(display_hostnames) if display_hostnames else ''}">
             </div>
 
             <div class="form-group">

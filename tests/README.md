@@ -1,6 +1,6 @@
 # PyLocalDNS Tests
 
-This directory contains tests for the PyLocalDNS project. These tests cover various aspects of the system including the IP preallocation feature, DNS server, DHCP server, and the DNS API functionality.
+This directory contains tests for the PyLocalDNS project. These tests cover various aspects of the system including the IP preallocation feature, DNS server, DHCP server, Web UI functionality, port scanning, and the DNS API functionality.
 
 ## Test Overview
 
@@ -18,6 +18,18 @@ The tests are organized as follows:
   - API endpoint functionality
   - API client functionality
   - API integration with the network server
+
+### Web UI Tests
+
+- **test_webui_routes.py**: Tests for Web UI routes and basic functionality.
+- **test_webui_routes_updated.py**: Tests for Web UI routes with the refactored module structure.
+- **test_port_scan_display.py**: Tests for port scanning display in the Web UI.
+- **test_port_scan_display_updated.py**: Updated port scanning display tests for the refactored codebase.
+
+### Enhanced Feature Tests
+
+- **test_port_display_enhanced.py**: Tests for enhanced port display with categories and improved formatting.
+- **test_htmx_integration.py**: Tests for HTMX integration for dynamic page updates.
 
 ## Running the Tests
 
@@ -41,6 +53,13 @@ You can run individual test files or use the provided shell scripts to run group
 
 # Run only the API tests
 ./run_api_tests.sh
+
+# Run WebUI tests
+./run_webui_tests.sh
+./run_webui_tests_updated.sh
+
+# Run enhanced feature tests (port display and HTMX)
+./run_enhanced_tests.sh
 ```
 
 ### Running Individual Test Files

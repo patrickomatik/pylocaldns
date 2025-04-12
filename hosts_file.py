@@ -256,7 +256,16 @@ class HostsFile:
         # Gather device information
         device_info = device_info or {}
         mac_address = device_info.get('mac') or ip_utils.get_mac_from_arp(ip_address)
+        
+        # Scan for open ports if not provided
         open_ports = device_info.get('ports', [])
+        if not open_ports:
+            # Try to get port information
+            try:
+                open_ports = ip_utils.scan_client_ports(ip_address)
+                logger.info(f"Discovered open ports for {ip_address}: {', '.join(map(str, open_ports))}")
+            except Exception as e:
+                logger.warning(f"Error scanning ports for {ip_address}: {e}")
         
         # Generate base hostname
         hostname = f"device-{ip_address.replace('.', '-')}"
@@ -445,10 +454,16 @@ class HostsFile:
             for ip, device_info in discovered.items():
                 # Check for open ports (more extensive list for better identification)
                 logger.debug(f"Scanning common ports on {ip}...")
+                # Get existing ports if any
+                existing_ports = device_info.get('ports', [])
+                # Scan for open ports
                 open_ports = ip_utils.scan_client_ports(ip)
-                if open_ports:
-                    device_info['ports'] = sorted(open_ports)  # Store open ports in device info
-                    logger.info(f"Device at {ip} has open ports: {', '.join(map(str, open_ports))}")
+                # Combine results
+                all_ports = sorted(set(existing_ports + open_ports))
+                
+                if all_ports:
+                    device_info['ports'] = all_ports  # Store open ports in device info
+                    logger.info(f"Device at {ip} has open ports: {', '.join(map(str, all_ports))}")
         
         # Update our configuration with discovered devices
         for ip, device_info in discovered.items():

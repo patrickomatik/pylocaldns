@@ -10,6 +10,16 @@ import logging
 import ipaddress
 from urllib.parse import parse_qs, urlparse
 
+# Import port database utilities if available
+try:
+    from port_database import get_port_db
+    from ip_utils import refresh_port_data, scan_client_ports, get_active_devices_with_ports
+    USE_PORT_DB = True
+except ImportError:
+    USE_PORT_DB = False
+    get_port_db = lambda: None
+import socket
+
 # Import page rendering methods
 from webui_pages import (
     render_home_page, render_edit_page, render_edit_lease_page,
@@ -35,8 +45,15 @@ def do_GET(self):
 
     try:
         if path == '/' or path == '/index.html' or path == '/static' or path == '/leases':
+            # Check if this is an HTMX request
+            is_htmx = 'HX-Request' in self.headers
             # All these paths show the home page for now
-            content = render_home_page(self)
+            content = render_home_page(self, htmx_request=is_htmx)
+            self._send_response(content)
+        
+        elif path == '/dashboard-content':
+            # This endpoint returns only the dashboard content for HTMX updates
+            content = render_home_page(self, htmx_request=True)
             self._send_response(content)
         
         elif path == '/scan':
@@ -335,6 +352,39 @@ def do_POST(self):
 
         elif self.path == '/scan':
             handle_scan_request(self)
+            
+        elif self.path == '/scan-ports':
+            # Scan for open ports on all known devices
+            if USE_PORT_DB:
+                # Get all devices from the hosts file
+                devices = []
+                
+                # Add static entries
+                for mac, ip in self.hosts_file.mac_to_ip.items():
+                    devices.append(ip)
+                
+                # Add dynamic leases
+                for mac, lease in self.hosts_file.leases.items():
+                    if not lease.is_expired():
+                        devices.append(lease.ip_address)
+                
+                # Remove duplicates
+                devices = list(set(devices))
+                
+                # Refresh ports for all devices
+                for ip in devices:
+                    try:
+                        # Run a fresh scan
+                        scan_client_ports(ip)
+                    except Exception as e:
+                        logger.error(f"Error scanning ports for {ip}: {e}")
+                
+                # Return the updated dashboard content
+                content = render_home_page(self, htmx_request=True)
+                self._send_response(content)
+            else:
+                # If database is not available, just refresh the page
+                self._send_redirect('/?message=Port+scanning+requires+database+support&type=error')
 
         elif self.path == '/save-settings':
             # Save DHCP settings
