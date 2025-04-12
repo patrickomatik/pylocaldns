@@ -248,16 +248,26 @@ def render_dashboard_content_html(handler):
             vendor_badge = handler._format_vendor(entry['mac'])
             ports_display = handler._format_ports(entry['ports'])
             
+            # Build the action buttons based on entry type
+            if entry['has_mac']:
+                edit_btn = f'<a href="/edit?mac={entry["mac"]}" class="btn btn-sm btn-edit"><i class="fas fa-edit"></i> Edit</a>'
+                delete_btn = f'<a href="/delete?mac={entry["mac"]}" class="btn btn-sm btn-delete" onclick="return confirmDelete(\'{entry["mac"]}\');"><i class="fas fa-trash"></i> Delete</a>'
+            else:
+                edit_btn = f'<a href="/edit?ip={entry["ip"]}" class="btn btn-sm btn-edit"><i class="fas fa-edit"></i> Edit</a>'
+                delete_btn = f'<a href="/delete?ip={entry["ip"]}" class="btn btn-sm btn-delete" onclick="return confirmDelete(\'{entry["ip"]}\');"><i class="fas fa-trash"></i> Delete</a>'
+            
+            badge = '' if entry['has_mac'] else ' <span class="badge badge-info">DNS Only</span>'
+            
             content += f"""
             <tr>
-                <td>{entry['mac']}{vendor_badge if entry['has_mac'] else ''}{'' if entry['has_mac'] else ' <span class="badge badge-info">DNS Only</span>'}</td>
+                <td>{entry['mac']}{vendor_badge if entry['has_mac'] else ''}{badge}</td>
                 <td>{entry['ip']}</td>
                 <td>{entry['hostnames']}</td>
                 <td>{ports_display}</td>
                 <td>
                     <div class="btn-group">
-                        {'<a href="/edit?mac=' + entry['mac'] + '" class="btn btn-sm btn-edit"><i class="fas fa-edit"></i> Edit</a>' if entry['has_mac'] else '<a href="/edit?ip=' + entry['ip'] + '" class="btn btn-sm btn-edit"><i class="fas fa-edit"></i> Edit</a>'}
-                        {'<a href="/delete?mac=' + entry['mac'] + '" class="btn btn-sm btn-delete" onclick="return confirmDelete(\'' + entry['mac'] + '\');"><i class="fas fa-trash"></i> Delete</a>' if entry['has_mac'] else '<a href="/delete?ip=' + entry['ip'] + '" class="btn btn-sm btn-delete" onclick="return confirmDelete(\'' + entry['ip'] + '\');"><i class="fas fa-trash"></i> Delete</a>'}
+                        {edit_btn}
+                        {delete_btn}
                     </div>
                 </td>
             </tr>
@@ -302,6 +312,10 @@ def render_dashboard_content_html(handler):
             vendor_badge = handler._format_vendor(lease['mac'])
             ports_display = handler._format_ports(lease['ports'])
             
+            # Create buttons with proper escaping
+            edit_btn = f'<a href="/edit-lease?mac={lease["mac"]}" class="btn btn-sm btn-edit"><i class="fas fa-edit"></i> Edit</a>'
+            delete_btn = f'<a href="/delete-lease?mac={lease["mac"]}" class="btn btn-sm btn-delete" onclick="return confirmDelete(\'{lease["mac"]}\');"><i class="fas fa-trash"></i> Delete</a>'
+            
             content += f"""
             <tr>
                 <td>{lease['mac']}{vendor_badge}</td>
@@ -311,12 +325,8 @@ def render_dashboard_content_html(handler):
                 <td>{lease['expires']}</td>
                 <td>
                     <div class="btn-group">
-                        <a href="/edit-lease?mac={lease['mac']}" class="btn btn-sm btn-edit">
-                            <i class="fas fa-edit"></i> Edit
-                        </a>
-                        <a href="/delete-lease?mac={lease['mac']}" class="btn btn-sm btn-delete" onclick="return confirmDelete('{lease['mac']}')">
-                            <i class="fas fa-trash"></i> Delete
-                        </a>
+                        {edit_btn}
+                        {delete_btn}
                     </div>
                 </td>
             </tr>
