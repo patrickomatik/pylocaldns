@@ -1,5 +1,5 @@
 # Hosts file updated by Network Server Web UI
-# Last updated: 2025-04-11 18:46:34
+# Last updated: 2025-04-12 11:42:42
 #
 # Format for DNS entries:
 # <IP address> <hostname1> [hostname2] [hostname3] ...
@@ -7,14 +7,14 @@
 # Format for DHCP entries with MAC address:
 # <IP address> <hostname1> [hostname2] ... [MAC=aa:bb:cc:dd:ee:ff]
 #
-# Custom DNS hosts file
+# Hosts file updated by Network Server Web UI
+# Last updated: 2025-04-11 18:46:34
 #
-# Format: <IP address> <hostname1> [hostname2] [hostname3] ...
-# Comments start with #
-#
+# Format for DNS entries:
+# <IP address> <hostname1> [hostname2] [hostname3] ...
 
 # Static and dynamic entries
-192.168.1.111 bug.com [MAC=11:22:44:55:66:77]
+192.168.1.112 bug.com [MAC=11:22:44:55:66:77]
 192.168.1.10 server1.local server1
 192.168.1.20 server2.local server2
 192.168.1.30 db.local database
