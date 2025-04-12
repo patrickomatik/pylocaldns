@@ -1,3 +1,11 @@
+## Screenshots
+
+### DNS Management Interface
+![DNS Management Interface](screenshots/Screenshot%202025-04-12%20at%2019.40.54.png)
+
+### DNS Entry Edit Screen
+![DNS Entry Edit Screen](screenshots/Screenshot%202025-04-12%20at%2019.41.18.png)
+
 ## Advanced Features
 
 ### IP Address Usage Checking
