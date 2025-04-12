@@ -20,8 +20,14 @@ from typing import Optional, Dict, List, Tuple
 # Setup logging
 logger = logging.getLogger('vendor_db')
 
-# URL for the IEEE OUI (Organizationally Unique Identifier) database
-IEEE_OUI_URL = "http://standards-oui.ieee.org/oui/oui.txt"
+# URLs for the MAC vendor database
+# Primary URL (IEEE)
+IEEE_OUI_URL = "https://standards-oui.ieee.org/oui/oui.txt"
+# Backup URLs in case primary fails
+BACKUP_URLS = [
+    "https://gitlab.com/wireshark/wireshark/-/raw/master/manuf",
+    "https://raw.githubusercontent.com/wireshark/wireshark/master/manuf"
+]
 
 # Default database path relative to this file
 DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mac_vendors.db')
@@ -119,71 +125,97 @@ class VendorDB:
     
     def update_database(self) -> bool:
         """
-        Update the database with the latest IEEE OUI data.
+        Update the database with the latest MAC vendor data.
+        Tries multiple sources in case the primary source fails.
         
         Returns:
             True if update was successful, False otherwise
         """
-        try:
-            logger.info("Downloading latest MAC vendor database from IEEE...")
-            
-            # Create a temporary file for downloading
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                temp_path = temp_file.name
-            
-            # Download the OUI file
-            urllib.request.urlretrieve(IEEE_OUI_URL, temp_path)
-            
-            # Process the downloaded file
-            vendors = self._parse_oui_file(temp_path)
-            
-            # Remove the temporary file
-            os.unlink(temp_path)
-            
-            if not vendors:
-                logger.error("Failed to parse IEEE OUI file or no data found")
-                return False
-                
-            logger.info(f"Parsed {len(vendors)} vendor entries from IEEE database")
-            
-            # Update the database
-            timestamp = int(time.time())
-            cursor = self.conn.cursor()
-            
-            # Begin transaction
-            self.conn.execute("BEGIN TRANSACTION")
-            
+        # List of URLs to try, starting with the primary
+        urls_to_try = [IEEE_OUI_URL] + BACKUP_URLS
+        
+        for url_index, url in enumerate(urls_to_try):
             try:
-                # Clear existing data
-                cursor.execute("DELETE FROM vendors")
+                source_name = "IEEE" if url_index == 0 else f"backup source {url_index}"
+                logger.info(f"Downloading MAC vendor database from {source_name}...")
                 
-                # Insert new data
-                for mac_prefix, vendor_name in vendors.items():
+                # Create a temporary file for downloading
+                with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                    temp_path = temp_file.name
+                
+                # Download the file
+                try:
+                    # Add a user agent to avoid being blocked
+                    headers = {'User-Agent': 'Mozilla/5.0 (compatible; PyLocalDNS/1.0)'}
+                    req = urllib.request.Request(url, headers=headers)
+                    with urllib.request.urlopen(req, timeout=30) as response:
+                        with open(temp_path, 'wb') as out_file:
+                            out_file.write(response.read())
+                except Exception as download_error:
+                    logger.warning(f"Failed to download from {source_name}: {download_error}")
+                    try:
+                        os.unlink(temp_path)  # Clean up the temp file
+                    except:
+                        pass
+                    continue  # Try the next URL
+                
+                # Process the downloaded file
+                if url_index == 0:  # IEEE format
+                    vendors = self._parse_oui_file(temp_path)
+                else:  # Wireshark format
+                    vendors = self._parse_wireshark_file(temp_path)
+                
+                # Remove the temporary file
+                os.unlink(temp_path)
+                
+                if not vendors:
+                    logger.warning(f"Failed to parse file from {source_name} or no data found")
+                    continue  # Try the next URL
+                    
+                logger.info(f"Parsed {len(vendors)} vendor entries from {source_name}")
+                
+                # Update the database
+                timestamp = int(time.time())
+                cursor = self.conn.cursor()
+                
+                # Begin transaction
+                self.conn.execute("BEGIN TRANSACTION")
+                
+                try:
+                    # Clear existing data
+                    cursor.execute("DELETE FROM vendors")
+                    
+                    # Insert new data
+                    for mac_prefix, vendor_name in vendors.items():
+                        cursor.execute(
+                            "INSERT INTO vendors (mac_prefix, vendor_name, last_updated) VALUES (?, ?, ?)",
+                            (mac_prefix, vendor_name, timestamp)
+                        )
+                    
+                    # Update metadata
                     cursor.execute(
-                        "INSERT INTO vendors (mac_prefix, vendor_name, last_updated) VALUES (?, ?, ?)",
-                        (mac_prefix, vendor_name, timestamp)
+                        "UPDATE metadata SET value = ? WHERE key = 'last_updated'",
+                        (str(timestamp),)
                     )
-                
-                # Update metadata
-                cursor.execute(
-                    "UPDATE metadata SET value = ? WHERE key = 'last_updated'",
-                    (str(timestamp),)
-                )
-                
-                # Commit changes
-                self.conn.commit()
-                logger.info("MAC vendor database updated successfully")
-                return True
-                
+                    
+                    # Commit changes
+                    self.conn.commit()
+                    logger.info(f"MAC vendor database updated successfully using {source_name}")
+                    return True
+                    
+                except Exception as e:
+                    # Rollback on error
+                    self.conn.rollback()
+                    logger.error(f"Error updating vendor database from {source_name}: {e}")
+                    continue  # Try the next URL
+                    
             except Exception as e:
-                # Rollback on error
-                self.conn.rollback()
-                logger.error(f"Error updating vendor database: {e}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error updating vendor database: {e}")
-            return False
+                logger.error(f"Error processing {source_name}: {e}")
+                continue  # Try the next URL
+        
+        # If we get here, all sources failed
+        logger.error("All sources failed when updating the MAC vendor database")
+        return False
     
     def _parse_oui_file(self, file_path: str) -> Dict[str, str]:
         """
@@ -213,6 +245,77 @@ class VendorDB:
             return vendors
         except Exception as e:
             logger.error(f"Error parsing OUI file: {e}")
+            return {}
+            
+    def _parse_wireshark_file(self, file_path: str) -> Dict[str, str]:
+        """
+        Parse the Wireshark manuf file format.
+        
+        Args:
+            file_path: Path to the downloaded Wireshark manuf file
+            
+        Returns:
+            Dictionary mapping MAC prefixes to vendor names
+        """
+        vendors = {}
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                # Format examples from Wireshark manuf file:
+                # 00:00:00	00:00:00	Officially Xerox, but 0:0:0:0:0:0 is more common
+                # 00:00:01	00:00:01	SuperLAN-2U
+                # 00:00:02	00:00:02	BBN (was internal usage only, no longer used)
+                # ... or without the second column:
+                # 00:00:0F	Digital Equipment Corporation
+                # 00:00:10	Sytek
+                
+                # Skip comment lines and empty lines
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # Split the line into parts
+                    parts = line.split('\t')
+                    
+                    if len(parts) < 2:
+                        continue
+                    
+                    # Extract MAC prefix and vendor name
+                    mac_prefix = parts[0].lower()
+                    
+                    # Handle different formats
+                    if len(parts) >= 3:
+                        # Format with two MAC columns: prefix, mask, vendor
+                        vendor_name = parts[2].strip()
+                    else:
+                        # Format with just one MAC column: prefix, vendor
+                        vendor_name = parts[1].strip()
+                    
+                    # Convert to our standard format (xx:xx:xx)
+                    mac_prefix = mac_prefix.replace('-', ':')
+                    
+                    # Skip full MAC addresses (we only want prefixes)
+                    if mac_prefix.count(':') > 2:
+                        continue
+                    
+                    # Skip masks and other non-standard entries
+                    if '/' in mac_prefix or '::' in mac_prefix:
+                        continue
+                    
+                    # Ensure we have a properly formatted MAC prefix (xx:xx:xx)
+                    parts = mac_prefix.split(':')
+                    if len(parts) < 3:
+                        # Pad with zeros if needed
+                        while len(parts) < 3:
+                            parts.append('00')
+                        mac_prefix = ':'.join(parts)
+                    
+                    vendors[mac_prefix] = vendor_name
+                
+            return vendors
+        except Exception as e:
+            logger.error(f"Error parsing Wireshark file: {e}")
             return {}
     
     def lookup_vendor(self, mac_address: str) -> Optional[str]:

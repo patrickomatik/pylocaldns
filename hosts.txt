@@ -1,5 +1,5 @@
 # Hosts file updated by Network Server
-# Last updated: 2025-04-12 13:40:48
+# Last updated: 2025-04-12 13:59:17
 #
 # Format for DNS entries:
 # <IP address> <hostname1> [hostname2] [hostname3] ...
@@ -10,7 +10,7 @@
 # Pre-allocated entries have 'preallocated' in their hostnames
 #
 # Hosts file updated by Network Server
-# Last updated: 2025-04-12 13:40:48
+# Last updated: 2025-04-12 13:59:17
 #
 # Format for DNS entries:
 # <IP address> <hostname1> [hostname2] [hostname3] ...
@@ -29,6 +29,7 @@
 192.168.42.150 device-192-168-42-150 preallocated [MAC=38:f7:3d:7a:4e:a4]
 192.168.42.151 device-192-168-42-151 preallocated
 192.168.42.152 device-192-168-42-152 preallocated [MAC=c4:4f:33:c9:aa:d0]
+192.168.42.156 device-192-168-42-156 preallocated [MAC=d8:d6:68:81:39:56]
 192.168.42.158 device-192-168-42-158 preallocated [MAC=bc:24:11:a2:7c:40]
 192.168.42.159 device-192-168-42-159 preallocated [MAC=fc:d7:49:2e:b3:6e]
 192.168.42.160 device-192-168-42-160 preallocated [MAC=68:db:f5:d9:98:9c]

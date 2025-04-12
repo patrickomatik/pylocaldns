@@ -76,7 +76,7 @@ def render_scan_page(self, message=None, message_type=None):
             content += f"""
                 <tr>
                     <td>{ip}</td>
-                    <td>{mac}</td>
+                    <td>{mac} {self._format_vendor(mac) if hasattr(self, '_format_vendor') else ''}</td>
                     <td>{status_badge}</td>
                     <td>
                         {self._format_ports(ports)}

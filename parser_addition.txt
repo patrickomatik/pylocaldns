@@ -1,0 +1,70 @@
+    def _parse_wireshark_file(self, file_path: str) -> Dict[str, str]:
+        """
+        Parse the Wireshark manuf file format.
+        
+        Args:
+            file_path: Path to the downloaded Wireshark manuf file
+            
+        Returns:
+            Dictionary mapping MAC prefixes to vendor names
+        """
+        vendors = {}
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                # Format examples from Wireshark manuf file:
+                # 00:00:00	00:00:00	Officially Xerox, but 0:0:0:0:0:0 is more common
+                # 00:00:01	00:00:01	SuperLAN-2U
+                # 00:00:02	00:00:02	BBN (was internal usage only, no longer used)
+                # ... or without the second column:
+                # 00:00:0F	Digital Equipment Corporation
+                # 00:00:10	Sytek
+                
+                # Skip comment lines and empty lines
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # Split the line into parts
+                    parts = line.split('\t')
+                    
+                    if len(parts) < 2:
+                        continue
+                    
+                    # Extract MAC prefix and vendor name
+                    mac_prefix = parts[0].lower()
+                    
+                    # Handle different formats
+                    if len(parts) >= 3:
+                        # Format with two MAC columns: prefix, mask, vendor
+                        vendor_name = parts[2].strip()
+                    else:
+                        # Format with just one MAC column: prefix, vendor
+                        vendor_name = parts[1].strip()
+                    
+                    # Convert to our standard format (xx:xx:xx)
+                    mac_prefix = mac_prefix.replace('-', ':')
+                    
+                    # Skip full MAC addresses (we only want prefixes)
+                    if mac_prefix.count(':') > 2:
+                        continue
+                    
+                    # Skip masks and other non-standard entries
+                    if '/' in mac_prefix or '::' in mac_prefix:
+                        continue
+                    
+                    # Ensure we have a properly formatted MAC prefix (xx:xx:xx)
+                    parts = mac_prefix.split(':')
+                    if len(parts) < 3:
+                        # Pad with zeros if needed
+                        while len(parts) < 3:
+                            parts.append('00')
+                        mac_prefix = ':'.join(parts)
+                    
+                    vendors[mac_prefix] = vendor_name
+                
+            return vendors
+        except Exception as e:
+            logger.error(f"Error parsing Wireshark file: {e}")
+            return {}

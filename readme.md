@@ -10,6 +10,29 @@ The DHCP server includes a comprehensive IP address usage verification system th
 
 If an IP address is found to be in use but not in our configuration, it's automatically marked as "pre-allocated" and removed from the DHCP pool. This prevents IP conflicts and ensures a stable network.
 
+### MAC Vendor Identification
+
+The server includes a built-in MAC address vendor database that identifies the manufacturer of network devices by their MAC address. This feature helps you:
+
+- Quickly identify unknown devices on your network
+- Recognize which type of device is connecting (phone, router, IoT device, etc.)
+- Verify legitimacy of devices (helpful for securing your network)
+
+The vendor database:
+- Downloads and processes data from the official IEEE OUI database
+- Automatically refreshes when older than 30 days
+- Provides fast lookups of vendor information
+
+You can manually update the database using the provided utility script:
+
+```bash
+# Update the MAC vendor database
+python util_scripts/update_mac_vendors.py --force
+
+# Test MAC vendor lookups
+python vendor_db.py AA:BB:CC:DD:EE:FF
+```
+
 ### Network Discovery
 
 The server includes a network scanner that can discover all devices on your network:
@@ -93,6 +116,7 @@ A lightweight Python server that provides both DNS and DHCP services using a sha
   - No external dependencies (uses standard Python libraries only)
   - Multithreaded design to handle multiple requests simultaneously
   - MAC address to hostname mapping
+  - MAC vendor identification (shows device manufacturers)
   - Detailed logging
 
 ## Requirements

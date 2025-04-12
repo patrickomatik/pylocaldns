@@ -121,7 +121,7 @@ def render_home_page(self, message=None, message_type=None):
         for entry in static_entries:
             content += f"""
             <tr>
-                <td>{entry['mac']}</td>
+                <td>{entry['mac']} {self._format_vendor(entry['mac']) if hasattr(self, '_format_vendor') else ''}</td>
                 <td>{entry['ip']}</td>
                 <td>{entry['hostnames']}</td>
                 <td>
@@ -159,7 +159,7 @@ def render_home_page(self, message=None, message_type=None):
         for lease in dynamic_leases:
             content += f"""
             <tr>
-                <td>{lease['mac']}</td>
+                <td>{lease['mac']} {self._format_vendor(lease['mac']) if hasattr(self, '_format_vendor') else ''}</td>
                 <td>{lease['ip']}</td>
                 <td>{lease['hostname']}</td>
                 <td>{lease['hostnames']}</td>

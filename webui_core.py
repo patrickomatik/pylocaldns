@@ -175,6 +175,12 @@ HTML_HEADER = """<!DOCTYPE html>
         .badge-success {
             background-color: #5cb85c;
         }
+        .badge-vendor {
+            background-color: #9c27b0;
+            color: white;
+            margin-left: 5px;
+            font-size: 0.8em;
+        }
         
         /* Port styling */
         .port-list {
@@ -293,6 +299,20 @@ class WebUIHandler(BaseHTTPRequestHandler):
                                         self.log_date_time_string(),
                                         format % args))
                                         
+    def _format_vendor(self, mac_address):
+        """Format a MAC address vendor information into a user-friendly HTML display."""
+        if not mac_address or mac_address == 'Unknown' or not hasattr(self, 'vendor_db') or self.vendor_db is None:
+            return ''
+            
+        try:
+            vendor_name = self.vendor_db.lookup_vendor(mac_address)
+            if vendor_name:
+                return f'<span class="badge badge-vendor" title="{vendor_name}">{vendor_name}</span>'
+            return ''
+        except Exception as e:
+            logger.warning(f"Error looking up vendor for MAC {mac_address}: {e}")
+            return ''
+            
     def _format_ports(self, ports):
         """Format a list of port numbers into a user-friendly HTML display."""
         # Handle None or empty list
