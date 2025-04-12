@@ -106,7 +106,7 @@ def render_home_page(handler):
         content += f"""
         <div>
             <div class="flex justify-between items-center mb-4">
-                <h1>Dashboard</h1>
+                <h1>Network Server Admin</h1>
                 <div class="flex gap-2">
                     <a href="/add" class="btn btn-add">
                         <i class="fas fa-plus"></i> Add Entry

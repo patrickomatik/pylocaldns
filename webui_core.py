@@ -49,7 +49,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
         try:
             from vendor_db import VendorDB
             self.vendor_db = VendorDB()
-            logger.info("MAC vendor database initialized")
+            logger.info("MAC vendor database initialized with thread-safety")
         except Exception as e:
             logger.warning(f"Could not initialize MAC vendor database: {e}")
             
@@ -259,6 +259,17 @@ class WebUIHandler(BaseHTTPRequestHandler):
             from webui_edit import render_add_page
             render_add_page(self)
         elif self.path.startswith('/edit'):
+            # Check if it's an IP or MAC based edit
+            query = parse_qs(urlparse(self.path).query)
+            mac = query.get('mac', [''])[0]
+            ip = query.get('ip', [''])[0]
+            
+            if not mac and not ip:
+                # Send a 400 error if neither MAC nor IP is provided
+                self._send_error(400, "MAC address or IP address is required")
+                return
+            
+            # Otherwise, proceed with edit
             from webui_edit import render_edit_page
             render_edit_page(self)
         elif self.path.startswith('/edit-lease'):
@@ -306,6 +317,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
             from webui_scan import handle_scan_ports_request
             handle_scan_ports_request(self)
         elif self.path.startswith('/settings'):
+            from webui_settings import handle_settings_request
+            handle_settings_request(self)
+        elif self.path.startswith('/save-settings'):
             from webui_settings import handle_settings_request
             handle_settings_request(self)
         else:

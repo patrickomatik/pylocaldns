@@ -29,7 +29,7 @@ def render_add_page_with_data(handler, mac="", ip="", hostnames="", errors=None)
     
     # Add page title
     content += """
-    <h1>Add DNS/DHCP Entry</h1>
+    <h1>Add New Entry</h1>
     """
     
     # Add error messages if any
@@ -82,6 +82,11 @@ def render_edit_page(handler):
         handler._send_redirect("/?message=Hosts+file+not+available&type=error")
         return
     
+    # Handle missing parameters
+    if not mac and not ip:
+        handler._send_error(400, "MAC address or IP address is required")
+        return
+    
     # Handle IP-only edit (DNS-only entries)
     if not mac and ip:
         hostnames = handler.hosts_file.get_hostnames_for_ip(ip)
@@ -93,13 +98,9 @@ def render_edit_page(handler):
         return
     
     # Handle MAC-based edit
-    if not mac:
-        handler._send_redirect("/?message=MAC+address+or+IP+address+is+required&type=error")
-        return
-    
     ip_address = handler.hosts_file.get_ip_for_mac(mac)
     if not ip_address:
-        handler._send_redirect(f"/?message=No+entry+found+for+MAC:+{mac}&type=error")
+        handler._send_error(404, f"No entry found for MAC address: {mac}")
         return
         
     hostnames = handler.hosts_file.get_hostnames_for_ip(ip_address)
@@ -116,7 +117,7 @@ def render_edit_page_with_data(handler, mac_address, original_ip, ip_address, ho
     
     # Add page title
     content += f"""
-    <h1>Edit DNS/DHCP Entry</h1>
+    <h1>Edit Entry</h1>
     """
     
     # Add error message if any

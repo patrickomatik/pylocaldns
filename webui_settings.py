@@ -53,7 +53,7 @@ def render_settings_page(handler, error_message=None):
     
     # Add page title
     content += """
-    <h1>Server Settings</h1>
+    <h1>Network Server Settings</h1>
     """
     
     # Add error message if any
@@ -62,7 +62,7 @@ def render_settings_page(handler, error_message=None):
     
     # Add form
     content += f"""
-    <form method="post" action="/settings">
+    <form method="post" action="/save-settings">
         <div class="card mb-4">
             <div class="card-header">
                 <h2 class="card-title">DHCP Server Settings</h2>
@@ -263,7 +263,7 @@ def render_settings_page_with_errors(handler, error_message, dhcp_enabled, dhcp_
     
     # Add page title
     content += """
-    <h1>Server Settings</h1>
+    <h1>Network Server Settings</h1>
     """
     
     # Add error messages
@@ -271,7 +271,7 @@ def render_settings_page_with_errors(handler, error_message, dhcp_enabled, dhcp_
     
     # Add form
     content += f"""
-    <form method="post" action="/settings">
+    <form method="post" action="/save-settings">
         <div class="card mb-4">
             <div class="card-header">
                 <h2 class="card-title">DHCP Server Settings</h2>
