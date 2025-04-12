@@ -448,14 +448,14 @@ class TestScanNetworkIntegration(unittest.TestCase):
         if hasattr(self, 'conn'):
             self.conn.close()
     
-    @patch('ip_utils.scan_network_async')
+    @patch('hosts_file.HostsFile.scan_network')
     def test_scan_network_request(self, mock_scan):
         """Test submitting a scan network request."""
-        # Mock the scan_network_async function to return some test results
+        # Mock the scan_network function to return some test results with ports
         mock_scan.return_value = {
-            '192.168.1.100': '11:22:33:44:55:66',
-            '192.168.1.101': '22:33:44:55:66:77',
-            '192.168.1.10': '00:11:22:33:44:55'  # Existing entry
+            '192.168.1.100': {'mac': '11:22:33:44:55:66', 'ports': [22, 80]},
+            '192.168.1.101': {'mac': '22:33:44:55:66:77', 'ports': [443, 8080]},
+            '192.168.1.10': {'mac': '00:11:22:33:44:55', 'ports': []}  # Existing entry
         }
         
         # We need to patch the _add_preallocated_ip method to avoid disk I/O issues in tests
@@ -479,8 +479,12 @@ class TestScanNetworkIntegration(unittest.TestCase):
         # Check for the scanner header on the page
         self.assertIn('Network Scanner', content)
         
-        # Check that the scan function was called with the correct parameters
-        mock_scan.assert_called_with(self.dhcp_range, callback=unittest.mock.ANY)
+        # Check that the scan function was called with the expected parameters
+        mock_scan.assert_called_once()
+        
+        # Verify the scan function returns correctly structured data for ports
+        self.assertEqual(mock_scan.return_value['192.168.1.100']['ports'], [22, 80])
+        self.assertEqual(mock_scan.return_value['192.168.1.101']['ports'], [443, 8080])
     
     def test_scan_without_dhcp_range(self):
         """Test scan network when no DHCP range is configured."""

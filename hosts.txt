@@ -1,5 +1,5 @@
 # Hosts file updated by Network Server Web UI
-# Last updated: 2025-04-12 11:42:42
+# Last updated: 2025-04-12 13:15:54
 #
 # Format for DNS entries:
 # <IP address> <hostname1> [hostname2] [hostname3] ...
@@ -7,17 +7,54 @@
 # Format for DHCP entries with MAC address:
 # <IP address> <hostname1> [hostname2] ... [MAC=aa:bb:cc:dd:ee:ff]
 #
-# Hosts file updated by Network Server Web UI
-# Last updated: 2025-04-11 18:46:34
+# Hosts file updated by Network Server
+# Last updated: 2025-04-12 12:52:19
 #
 # Format for DNS entries:
 # <IP address> <hostname1> [hostname2] [hostname3] ...
 
 # Static and dynamic entries
 192.168.1.112 bug.com [MAC=11:22:44:55:66:77]
+192.168.42.105 device-192-168-42-105 preallocated [MAC=bc:99:11:98:10:33]
+192.168.42.106 device-192-168-42-106 preallocated [MAC=bc:24:11:23:a4:b9]
+192.168.42.107 device-192-168-42-107 preallocated [MAC=bc:24:11:76:17:5f]
+192.168.42.129 device-192-168-42-129 preallocated [MAC=44:17:93:52:5f:60]
+192.168.42.136 device-192-168-42-136 preallocated [MAC=c2:13:8d:d3:ce:c6]
+192.168.42.139 device-192-168-42-139 preallocated [MAC=bc:24:11:92:44:50]
+192.168.42.144 device-192-168-42-144 preallocated [MAC=f6:2a:d8:e6:fd:7a]
+192.168.42.146 device-192-168-42-146 preallocated [MAC=bc:24:11:7c:85:57]
+192.168.42.150 device-192-168-42-150 preallocated [MAC=38:f7:3d:7a:4e:a4]
+192.168.42.152 device-192-168-42-152 preallocated [MAC=c4:4f:33:c9:aa:d0]
+192.168.42.156 device-192-168-42-156 preallocated [MAC=d8:d6:68:81:39:56]
+192.168.42.158 device-192-168-42-158 preallocated [MAC=bc:24:11:a2:7c:40]
+192.168.42.159 device-192-168-42-159 preallocated [MAC=fc:d7:49:2e:b3:6e]
+192.168.42.160 device-192-168-42-160 preallocated [MAC=68:db:f5:d9:98:9c]
+192.168.42.161 device-192-168-42-161 preallocated [MAC=bc:24:11:31:6a:fd]
+192.168.42.166 device-192-168-42-166 preallocated [MAC=20:23:51:9a:fe:62]
+192.168.42.167 device-192-168-42-167 preallocated [MAC=18:de:50:be:a2:47]
+192.168.42.169 device-192-168-42-169 preallocated [MAC=d8:d6:68:aa:f8:79]
+192.168.42.170 device-192-168-42-170 preallocated [MAC=44:d9:e7:22:46:3c]
+192.168.42.172 device-192-168-42-172 preallocated [MAC=ec:eb:b8:87:63:a2]
+192.168.42.178 device-192-168-42-178 preallocated [MAC=bc:24:11:61:7f:9a]
+192.168.42.180 device-192-168-42-180 preallocated [MAC=bc:24:11:dc:a2:3e]
+192.168.42.186 device-192-168-42-186 preallocated [MAC=bc:24:11:95:1b:9d]
+192.168.42.190 device-192-168-42-190 preallocated [MAC=bc:24:11:ed:ee:27]
+192.168.42.191 device-192-168-42-191 preallocated [MAC=40:b4:cd:23:9f:f7]
+192.168.42.194 device-192-168-42-194 preallocated [MAC=78:8c:b5:b5:48:63]
+192.168.42.195 device-192-168-42-195 preallocated [MAC=9c:53:22:2b:5c:58]
+192.168.42.198 device-192-168-42-198 preallocated [MAC=78:8c:b5:b5:3c:ac]
+192.168.42.199 device-192-168-42-199 preallocated [MAC=48:22:54:62:e3:a0]
+10.0.0.50 api.dev.local api-test
 192.168.1.10 server1.local server1
 192.168.1.20 server2.local server2
 192.168.1.30 db.local database
-10.0.0.50 api.dev.local api-test
+192.168.42.110 device-192-168-42-110 preallocated
+192.168.42.137 device-192-168-42-137 preallocated
+192.168.42.151 device-192-168-42-151 preallocated
+192.168.42.173 device-192-168-42-173 preallocated
+192.168.42.189 device-192-168-42-189 preallocated
+192.168.42.193 device-192-168-42-193 preallocated
+192.168.42.197 device-192-168-42-197 preallocated
+192.168.42.200 device-192-168-42-200 preallocated
 2001:db8::1 ipv6server.local ipv6test
 2001:db8::2 ipv6db.local

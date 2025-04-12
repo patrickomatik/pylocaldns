@@ -16,11 +16,11 @@ import logging
 import threading
 import time
 import ipaddress
+import re
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 import socket
-import re
 import ip_utils
 
 # Setup logging
@@ -287,6 +287,16 @@ class WebUIHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, hosts_file=None, network_server=None, **kwargs):
         self.hosts_file = hosts_file
         self.network_server = network_server
+        self.vendor_db = None
+        
+        # Try to initialize vendor database if available
+        try:
+            from vendor_db import VendorDB
+            self.vendor_db = VendorDB()
+            logger.info("MAC vendor database initialized")
+        except Exception as e:
+            logger.warning(f"Could not initialize MAC vendor database: {e}")
+            
         # BaseHTTPRequestHandler calls do_GET inside __init__
         super().__init__(*args, **kwargs)
 
@@ -298,11 +308,31 @@ class WebUIHandler(BaseHTTPRequestHandler):
                                         
     def _format_ports(self, ports):
         """Format a list of port numbers into a user-friendly HTML display."""
+        # Handle None or empty list
         if not ports:
             return "<span class='no-ports'>None detected</span>"
+        
+        # Ensure ports is a list of integers
+        if isinstance(ports, str) and ',' in ports:
+            # In case ports came as a comma-separated string
+            try:
+                ports = [int(p.strip()) for p in ports.split(',') if p.strip().isdigit()]
+            except ValueError:
+                pass
+                
+        # Make sure ports is a list, not a string
+        if not isinstance(ports, (list, tuple, set)):
+            try:
+                ports = [int(ports)]
+            except (ValueError, TypeError):
+                return "<span class='no-ports'>Invalid port format</span>"
             
         result = []
         for port in sorted(ports):
+            # Convert to int if it's a string
+            if isinstance(port, str) and port.isdigit():
+                port = int(port)
+                
             if port in self.PORT_DESCRIPTIONS:
                 service = self.PORT_DESCRIPTIONS[port]
                 result.append(f"<span class='port port-known' title='{service}'>{port} ({service})</span>")
@@ -354,7 +384,14 @@ class WebUIHandler(BaseHTTPRequestHandler):
                             port_list = hostname[6:].split(',')
                             ports = [int(p) for p in port_list if p.isdigit()]
                         except (ValueError, IndexError):
-                            pass
+                            # Fallback: try to parse as a single string with numbers
+                            try:
+                                # Try to extract numbers from the hostname
+                                port_nums = re.findall(r'\d+', hostname[6:])
+                                if port_nums:
+                                    ports = [int(p) for p in port_nums]
+                            except Exception:
+                                pass
                     elif hostname != 'preallocated':
                         display_hostnames.append(hostname)
                 
@@ -385,7 +422,14 @@ class WebUIHandler(BaseHTTPRequestHandler):
                                 port_list = hostname[6:].split(',')
                                 ports = [int(p) for p in port_list if p.isdigit()]
                             except (ValueError, IndexError):
-                                pass
+                                # Fallback: try to parse as a single string with numbers
+                                try:
+                                    # Try to extract numbers from the hostname
+                                    port_nums = re.findall(r'\d+', hostname[6:])
+                                    if port_nums:
+                                        ports = [int(p) for p in port_nums]
+                                except Exception:
+                                    pass
                         elif hostname != 'preallocated':
                             display_hostnames.append(hostname)
 
@@ -1309,15 +1353,14 @@ class WebUIHandler(BaseHTTPRequestHandler):
             # Start the scan in a new thread so we can return a response to the user
             def scan_thread():
                 try:
-                    # Import scan functionality from ip_utils
-                    import ip_utils
-                    
                     # Perform the scan
-                    discovered = ip_utils.scan_network_async(self.hosts_file.dhcp_range, callback=progress_callback)
+                    discovered = self.hosts_file.scan_network()
                     
                     # Process results for display
-                    for ip, mac in discovered.items():
+                    for ip, device_info in discovered.items():
                         status = "Discovered"
+                        mac = device_info.get('mac')
+                        ports = device_info.get('ports', [])
                         
                         # Check if it's already in our configuration
                         if ip in self.hosts_file.reserved_ips:
@@ -1326,11 +1369,8 @@ class WebUIHandler(BaseHTTPRequestHandler):
                             status = "Pre-allocated"
                         else:
                             # This is a newly discovered device, add it as pre-allocated
-                            self.hosts_file._add_preallocated_ip(ip)
+                            self.hosts_file._add_preallocated_ip(ip, device_info)
                             status = "Added"
-                        
-                        # Get the open ports from the device info
-                        ports = device_info.get('ports', [])
                         
                         self.scan_results[ip] = {
                             'mac': mac or 'Unknown',
