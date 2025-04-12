@@ -51,12 +51,12 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24))
 # Register blueprint
 app.register_blueprint(routes)
 
-# Initialize vendor database for context processor
+# Initialize vendor database for context processor using thread-local storage
 vendor_db = None
 if HAS_VENDOR_DB:
     try:
         vendor_db = VendorDB()
-        logger.info("MAC vendor database initialized")
+        logger.info("MAC vendor database initialized with thread-safety")
     except Exception as e:
         logger.warning(f"Could not initialize MAC vendor database: {e}")
 

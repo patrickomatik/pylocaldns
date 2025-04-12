@@ -15,6 +15,7 @@ import logging
 import urllib.request
 import tempfile
 import time
+import threading
 from typing import Optional, Dict, List, Tuple
 
 # Setup logging
@@ -45,6 +46,8 @@ class VendorDB:
         """
         self.db_path = db_path
         self.conn = None
+        self.lock = threading.RLock()  # Thread lock for database access
+        self.local_storage = threading.local()  # Thread-local storage for connections
         
         # Create or connect to the database
         self._ensure_db_exists()
@@ -53,52 +56,56 @@ class VendorDB:
         if auto_update and self._should_update_db():
             self.update_database()
     
+    def _get_connection(self):
+        """Get a thread-specific SQLite connection."""
+        if not hasattr(self.local_storage, 'conn') or self.local_storage.conn is None:
+            self.local_storage.conn = sqlite3.connect(self.db_path)
+        return self.local_storage.conn
+    
     def _ensure_db_exists(self) -> None:
         """Ensure the database file exists and has the correct schema."""
-        try:
-            self.conn = sqlite3.connect(self.db_path)
-            cursor = self.conn.cursor()
-            
-            # Check if the vendors table exists
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vendors'")
-            table_exists = cursor.fetchone() is not None
-            
-            if not table_exists:
-                logger.info(f"Creating new MAC vendor database at {self.db_path}")
-                # Create the table
-                cursor.execute('''
-                CREATE TABLE vendors (
-                    mac_prefix TEXT PRIMARY KEY,
-                    vendor_name TEXT NOT NULL,
-                    last_updated INTEGER NOT NULL
-                )
-                ''')
+        with self.lock:
+            try:
+                conn = self._get_connection()
+                cursor = conn.cursor()
                 
-                # Create index on mac_prefix for fast lookups
-                cursor.execute("CREATE INDEX idx_mac_prefix ON vendors(mac_prefix)")
+                # Check if the vendors table exists
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vendors'")
+                table_exists = cursor.fetchone() is not None
                 
-                # Create metadata table for tracking database info
-                cursor.execute('''
-                CREATE TABLE metadata (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )
-                ''')
-                
-                # Initialize metadata
-                timestamp = int(time.time())
-                cursor.execute(
-                    "INSERT INTO metadata (key, value) VALUES (?, ?)",
-                    ("last_updated", str(timestamp))
-                )
-                
-                self.conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
-            if self.conn:
-                self.conn.close()
-                self.conn = None
-            raise
+                if not table_exists:
+                    logger.info(f"Creating new MAC vendor database at {self.db_path}")
+                    # Create the table
+                    cursor.execute('''
+                    CREATE TABLE vendors (
+                        mac_prefix TEXT PRIMARY KEY,
+                        vendor_name TEXT NOT NULL,
+                        last_updated INTEGER NOT NULL
+                    )
+                    ''')
+                    
+                    # Create index on mac_prefix for fast lookups
+                    cursor.execute("CREATE INDEX idx_mac_prefix ON vendors(mac_prefix)")
+                    
+                    # Create metadata table for tracking database info
+                    cursor.execute('''
+                    CREATE TABLE metadata (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL
+                    )
+                    ''')
+                    
+                    # Initialize metadata
+                    timestamp = int(time.time())
+                    cursor.execute(
+                        "INSERT INTO metadata (key, value) VALUES (?, ?)",
+                        ("last_updated", str(timestamp))
+                    )
+                    
+                    conn.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Database error: {e}")
+                raise
     
     def _should_update_db(self) -> bool:
         """Check if the database should be updated."""
@@ -106,19 +113,21 @@ class VendorDB:
             return True
             
         try:
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT value FROM metadata WHERE key='last_updated'")
-            result = cursor.fetchone()
-            
-            if not result:
-                return True
+            with self.lock:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM metadata WHERE key='last_updated'")
+                result = cursor.fetchone()
                 
-            last_updated = int(result[0])
-            current_time = int(time.time())
-            
-            # Update if older than 30 days
-            return (current_time - last_updated) > (30 * 24 * 60 * 60)
-            
+                if not result:
+                    return True
+                    
+                last_updated = int(result[0])
+                current_time = int(time.time())
+                
+                # Update if older than 30 days
+                return (current_time - last_updated) > (30 * 24 * 60 * 60)
+                
         except (sqlite3.Error, ValueError) as e:
             logger.warning(f"Error checking database update status: {e}")
             return True
@@ -176,38 +185,41 @@ class VendorDB:
                 
                 # Update the database
                 timestamp = int(time.time())
-                cursor = self.conn.cursor()
                 
-                # Begin transaction
-                self.conn.execute("BEGIN TRANSACTION")
-                
-                try:
-                    # Clear existing data
-                    cursor.execute("DELETE FROM vendors")
+                with self.lock:
+                    conn = self._get_connection()
+                    cursor = conn.cursor()
                     
-                    # Insert new data
-                    for mac_prefix, vendor_name in vendors.items():
+                    # Begin transaction
+                    conn.execute("BEGIN TRANSACTION")
+                    
+                    try:
+                        # Clear existing data
+                        cursor.execute("DELETE FROM vendors")
+                        
+                        # Insert new data
+                        for mac_prefix, vendor_name in vendors.items():
+                            cursor.execute(
+                                "INSERT INTO vendors (mac_prefix, vendor_name, last_updated) VALUES (?, ?, ?)",
+                                (mac_prefix, vendor_name, timestamp)
+                            )
+                        
+                        # Update metadata
                         cursor.execute(
-                            "INSERT INTO vendors (mac_prefix, vendor_name, last_updated) VALUES (?, ?, ?)",
-                            (mac_prefix, vendor_name, timestamp)
+                            "UPDATE metadata SET value = ? WHERE key = 'last_updated'",
+                            (str(timestamp),)
                         )
-                    
-                    # Update metadata
-                    cursor.execute(
-                        "UPDATE metadata SET value = ? WHERE key = 'last_updated'",
-                        (str(timestamp),)
-                    )
-                    
-                    # Commit changes
-                    self.conn.commit()
-                    logger.info(f"MAC vendor database updated successfully using {source_name}")
-                    return True
-                    
-                except Exception as e:
-                    # Rollback on error
-                    self.conn.rollback()
-                    logger.error(f"Error updating vendor database from {source_name}: {e}")
-                    continue  # Try the next URL
+                        
+                        # Commit changes
+                        conn.commit()
+                        logger.info(f"MAC vendor database updated successfully using {source_name}")
+                        return True
+                        
+                    except Exception as e:
+                        # Rollback on error
+                        conn.rollback()
+                        logger.error(f"Error updating vendor database from {source_name}: {e}")
+                        continue  # Try the next URL
                     
             except Exception as e:
                 logger.error(f"Error processing {source_name}: {e}")
@@ -340,10 +352,12 @@ class VendorDB:
             # Extract the OUI (first 3 bytes)
             oui = ':'.join(mac.split(':')[:3])
             
-            # Query the database
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT vendor_name FROM vendors WHERE mac_prefix = ?", (oui,))
-            result = cursor.fetchone()
+            # Query the database using thread-local connection
+            with self.lock:
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT vendor_name FROM vendors WHERE mac_prefix = ?", (oui,))
+                result = cursor.fetchone()
             
             return result[0] if result else None
             
@@ -376,9 +390,10 @@ class VendorDB:
     
     def close(self) -> None:
         """Close the database connection."""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        with self.lock:
+            if hasattr(self.local_storage, 'conn') and self.local_storage.conn:
+                self.local_storage.conn.close()
+                self.local_storage.conn = None
     
     def __del__(self) -> None:
         """Destructor to ensure the database connection is closed."""
