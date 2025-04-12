@@ -256,8 +256,8 @@ def render_dashboard_content_html(handler):
                 <td>{ports_display}</td>
                 <td>
                     <div class="btn-group">
-                        {f"<a href='/edit?mac={entry['mac']}' class='btn btn-sm btn-edit'><i class='fas fa-edit'></i> Edit</a>" if entry['has_mac'] else f"<a href='/edit?ip={entry['ip']}' class='btn btn-sm btn-edit'><i class='fas fa-edit'></i> Edit</a>"}
-                        {f"<a href='/delete?mac={entry['mac']}' class='btn btn-sm btn-delete' onclick='return confirmDelete(\"{entry['mac']}\")'><i class='fas fa-trash'></i> Delete</a>" if entry['has_mac'] else f"<a href='/delete?ip={entry['ip']}' class='btn btn-sm btn-delete' onclick='return confirmDelete(\"{entry['ip']}\")'><i class='fas fa-trash'></i> Delete</a>"}
+                        {'<a href="/edit?mac=' + entry['mac'] + '" class="btn btn-sm btn-edit"><i class="fas fa-edit"></i> Edit</a>' if entry['has_mac'] else '<a href="/edit?ip=' + entry['ip'] + '" class="btn btn-sm btn-edit"><i class="fas fa-edit"></i> Edit</a>'}
+                        {'<a href="/delete?mac=' + entry['mac'] + '" class="btn btn-sm btn-delete" onclick="return confirmDelete(\'' + entry['mac'] + '\');"><i class="fas fa-trash"></i> Delete</a>' if entry['has_mac'] else '<a href="/delete?ip=' + entry['ip'] + '" class="btn btn-sm btn-delete" onclick="return confirmDelete(\'' + entry['ip'] + '\');"><i class="fas fa-trash"></i> Delete</a>'}
                     </div>
                 </td>
             </tr>
