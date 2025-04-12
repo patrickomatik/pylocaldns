@@ -1,0 +1,139 @@
+<!-- Static entries section -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title"><i class="fas fa-server"></i> Static Entries</h2>
+        <div>
+            <span class="badge badge-info">{{ static_entries|length }} Entries</span>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if static_entries %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>MAC Address</th>
+                        <th>IP Address</th>
+                        <th>Hostnames</th>
+                        <th>Open Ports</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in static_entries %}
+                        <tr>
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-microchip text-muted text-sm"></i>
+                                    <span>{{ entry.mac }}</span>
+                                    {{ format_vendor(entry.mac) | safe }}
+                                </div>
+                            </td>
+                            <td>
+                                <code>{{ entry.ip }}</code>
+                            </td>
+                            <td>{{ entry.hostnames }}</td>
+                            <td>
+                                {{ format_ports(entry.ports) | safe }}
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{{ url_for('routes.edit_entry', mac=entry.mac) }}" class="btn btn-sm btn-edit">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </a>
+                                    <a href="{{ url_for('routes.delete_entry', mac=entry.mac) }}" class="btn btn-sm btn-delete" data-confirm="Are you sure you want to delete the entry for MAC: {{ entry.mac }}?">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="text-center py-4">
+                <i class="fas fa-database text-muted" style="font-size: 3rem;"></i>
+                <p class="mt-3">No static entries found. Add entries using the "Add Entry" button above.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- DHCP Leases section -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h2 class="card-title"><i class="fas fa-exchange-alt"></i> DHCP Leases</h2>
+        <div>
+            <span class="badge badge-info">{{ dynamic_leases|length }} Active Leases</span>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if dynamic_leases %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>MAC Address</th>
+                        <th>IP Address</th>
+                        <th>Hostname</th>
+                        <th>DNS Hostnames</th>
+                        <th>Open Ports</th>
+                        <th>Expires</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lease in dynamic_leases %}
+                        <tr>
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-laptop text-muted text-sm"></i>
+                                    <span>{{ lease.mac }}</span>
+                                    {{ format_vendor(lease.mac) | safe }}
+                                </div>
+                            </td>
+                            <td><code>{{ lease.ip }}</code></td>
+                            <td>{{ lease.hostname }}</td>
+                            <td>{{ lease.hostnames }}</td>
+                            <td>
+                                {{ format_ports(lease.ports) | safe }}
+                            </td>
+                            <td>{{ lease.expires }}</td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{{ url_for('routes.edit_lease', mac=lease.mac) }}" class="btn btn-sm btn-edit">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </a>
+                                    <a href="{{ url_for('routes.delete_lease', mac=lease.mac) }}" class="btn btn-sm btn-delete" data-confirm="Are you sure you want to release the lease for MAC: {{ lease.mac }}?">
+                                        <i class="fas fa-trash"></i> Release
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="text-center py-4">
+                <i class="fas fa-plug text-muted" style="font-size: 3rem;"></i>
+                <p class="mt-3">No active DHCP leases found. Devices will appear here when they request IP addresses.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Network Tools section -->
+{% if use_port_db %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-network-wired"></i> Network Tools</h2>
+        </div>
+        <div class="card-body text-center">
+            <button class="btn btn-primary" hx-post="{{ url_for('routes.scan_ports') }}" hx-target="#dashboard-content" hx-indicator="#scan-indicator">
+                <i class="fas fa-sync"></i> Refresh Open Ports
+            </button>
+            <span id="scan-indicator" class="htmx-indicator">
+                <i class="fas fa-circle-notch fa-spin"></i> Scanning ports...
+            </span>
+            <p class="text-muted text-sm mt-2">Refresh detected open ports on all network devices.</p>
+        </div>
+    </div>
+{% endif %}

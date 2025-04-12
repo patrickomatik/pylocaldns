@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Add Entry - PyLocalDNS{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <div class="flex justify-between items-center mb-4">
+        <div>
+            <h1 class="mt-0">Add New Entry</h1>
+            <p class="mb-0 text-muted">Add a new device to your network</p>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-plus"></i> Add Device</h2>
+        </div>
+        <div class="card-body">
+            {% if errors %}
+                <div class="message error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <div>
+                        {% for error in errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+            
+            <form method="post" action="/add">
+                <div class="form-group">
+                    <label for="mac">MAC Address (format: xx:xx:xx:xx:xx:xx):</label>
+                    <input type="text" id="mac" name="mac" value="{{ mac }}" placeholder="00:11:22:33:44:55" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="ip">IP Address:</label>
+                    <input type="text" id="ip" name="ip" value="{{ ip }}" placeholder="192.168.1.100" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="hostnames">Hostnames (comma-separated):</label>
+                    <input type="text" id="hostnames" name="hostnames" value="{{ hostnames }}" placeholder="device.local, device">
+                    <p class="text-muted text-sm mt-1 mb-0">Add multiple hostnames separated by commas</p>
+                </div>
+
+                <div class="form-group mb-0 flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Entry
+                    </button>
+                    <a href="/" class="btn btn-plain">
+                        <i class="fas fa-times"></i> Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

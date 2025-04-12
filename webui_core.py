@@ -5,683 +5,39 @@ Web UI Core Module for the DNS/DHCP Network Server
 This module provides the base classes for the Web UI server.
 """
 
-import os
 import socket
 import logging
 import threading
-import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 
+# Import our modules
+from webui_models import DNSRecord
+from webui_templates import HTML_HEADER, HTML_FOOTER, render_message
+
 # Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger('webui')
-
-# HTML templates
-HTML_HEADER = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Network Server Admin</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <style>
-        :root {
-            --color-primary: #3b82f6;
-            --color-primary-light: #93c5fd;
-            --color-primary-dark: #1d4ed8;
-            --color-secondary: #10b981;
-            --color-secondary-light: #a7f3d0;
-            --color-secondary-dark: #065f46;
-            --color-danger: #ef4444;
-            --color-danger-light: #fecaca;
-            --color-warning: #f59e0b;
-            --color-warning-light: #fde68a;
-            --color-info: #6366f1;
-            --color-info-light: #c7d2fe;
-            --color-text: #1f2937;
-            --color-text-light: #6b7280;
-            --color-background: #ffffff;
-            --color-background-alt: #f9fafb;
-            --color-border: #e5e7eb;
-            --color-nav-bg: #1e293b;
-            --color-nav-text: #f8fafc;
-            --color-nav-active: #3b82f6;
-            --color-card-bg: #ffffff;
-            --radius-sm: 0.25rem;
-            --radius-md: 0.375rem;
-            --radius-lg: 0.5rem;
-            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-        }
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            line-height: 1.6;
-            color: var(--color-text);
-            background-color: var(--color-background-alt);
-            margin: 0;
-            padding: 0;
-        }
-        h1, h2, h3, h4, h5, h6 {
-            color: var(--color-text);
-            margin-bottom: 1rem;
-            font-weight: 600;
-            line-height: 1.3;
-        }
-        h1 {
-            font-size: 1.75rem;
-            margin-top: 0.5rem;
-        }
-        h2 {
-            font-size: 1.375rem;
-            margin-top: 1.5rem;
-        }
-        p {
-            margin-bottom: 1rem;
-        }
-        .container {
-            max-width: 1280px;
-            margin: 0 auto;
-            padding: 0 1rem;
-        }
-        .content-container {
-            background-color: var(--color-card-bg);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-md);
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        /* Table Styles */
-        table {
-            width: 100%;
-            border-collapse: separate;
-            border-spacing: 0;
-            margin-bottom: 1.5rem;
-            border-radius: var(--radius-md);
-            overflow: hidden;
-            box-shadow: var(--shadow-sm);
-        }
-        thead {
-            background-color: var(--color-background-alt);
-        }
-        th {
-            text-align: left;
-            padding: 0.75rem 1rem;
-            font-weight: 600;
-            color: var(--color-text);
-            border-bottom: 1px solid var(--color-border);
-            text-transform: uppercase;
-            font-size: 0.75rem;
-            letter-spacing: 0.05em;
-        }
-        td {
-            padding: 0.875rem 1rem;
-            border-bottom: 1px solid var(--color-border);
-            vertical-align: middle;
-        }
-        tr:last-child td {
-            border-bottom: none;
-        }
-        tr:hover {
-            background-color: rgba(240, 240, 250, 0.5);
-        }
-        /* Button Styles */
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0.5rem 1rem;
-            font-weight: 500;
-            font-size: 0.875rem;
-            border-radius: var(--radius-md);
-            border: none;
-            text-decoration: none;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: var(--shadow-sm);
-            column-gap: 0.5rem;
-            color: var(--color-nav-text);
-            background-color: var(--color-primary);
-        }
-        .btn:hover {
-            box-shadow: var(--shadow-md);
-            opacity: 0.9;
-        }
-        .btn:active {
-            transform: translateY(1px);
-        }
-        .btn-sm {
-            padding: 0.375rem 0.75rem;
-            font-size: 0.75rem;
-        }
-        .btn-primary {
-            background-color: var(--color-primary);
-            color: white;
-        }
-        .btn-secondary {
-            background-color: var(--color-secondary);
-            color: white;
-        }
-        .btn-edit {
-            background-color: var(--color-secondary);
-            color: white;
-        }
-        .btn-delete {
-            background-color: var(--color-danger);
-            color: white;
-        }
-        .btn-add {
-            background-color: var(--color-primary);
-            color: white;
-            margin-bottom: 1.5rem;
-            margin-top: 0.5rem;
-        }
-        .btn-scan {
-            background-color: var(--color-warning);
-            color: white;
-            margin-bottom: 1.5rem;
-        }
-        .btn-plain {
-            background-color: #f3f4f6;
-            color: var(--color-text);
-        }
-        .btn-group {
-            display: flex;
-            gap: 0.5rem;
-        }
-        /* Form Styles */
-        form {
-            background-color: var(--color-card-bg);
-            padding: 1.5rem;
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-md);
-            margin-bottom: 1.5rem;
-        }
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: var(--color-text);
-        }
-        input[type="text"], 
-        input[type="password"], 
-        input[type="email"],
-        select,
-        textarea {
-            width: 100%;
-            padding: 0.75rem;
-            margin-bottom: 1rem;
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            background-color: #fff;
-            color: var(--color-text);
-            font-size: 0.875rem;
-            transition: border-color 0.15s ease;
-        }
-        input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: var(--color-primary-light);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-        }
-        .form-group {
-            margin-bottom: 1.25rem;
-        }
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-        .checkbox-group input[type="checkbox"] {
-            width: 1rem;
-            height: 1rem;
-        }
-        .checkbox-group label {
-            margin-bottom: 0;
-            font-weight: normal;
-        }
-        /* Message Styling */
-        .message {
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            border-radius: var(--radius-md);
-            box-shadow: var(--shadow-sm);
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-        }
-        .message i {
-            font-size: 1.25rem;
-        }
-        .success {
-            background-color: var(--color-secondary-light);
-            border-left: 4px solid var(--color-secondary);
-            color: var(--color-secondary-dark);
-        }
-        .error {
-            background-color: var(--color-danger-light);
-            border-left: 4px solid var(--color-danger);
-            color: var(--color-danger);
-        }
-        .warning {
-            background-color: var(--color-warning-light);
-            border-left: 4px solid var(--color-warning);
-            color: var(--color-text);
-        }
-        .info {
-            background-color: var(--color-info-light);
-            border-left: 4px solid var(--color-info);
-            color: var(--color-text);
-        }
-        /* Navigation */
-        .nav {
-            background-color: var(--color-nav-bg);
-            box-shadow: var(--shadow-md);
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            margin-bottom: 2rem;
-        }
-        .nav-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.75rem 1.5rem;
-            max-width: 1280px;
-            margin: 0 auto;
-        }
-        .nav-brand {
-            display: flex;
-            align-items: center;
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--color-nav-text);
-            text-decoration: none;
-            gap: 0.5rem;
-        }
-        .nav-links {
-            display: flex;
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            gap: 0.5rem;
-        }
-        .nav-links a {
-            color: var(--color-nav-text);
-            text-decoration: none;
-            padding: 0.5rem 1rem;
-            border-radius: var(--radius-md);
-            font-weight: 500;
-            transition: background-color 0.2s;
-        }
-        .nav-links a:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-        .nav-links a.active {
-            background-color: var(--color-nav-active);
-            color: white;
-        }
-        .nav-toggle {
-            display: none;
-            background: none;
-            border: none;
-            color: var(--color-nav-text);
-            font-size: 1.5rem;
-            cursor: pointer;
-        }
-        /* Utility Classes */
-        .mt-0 { margin-top: 0; }
-        .mt-1 { margin-top: 0.25rem; }
-        .mt-2 { margin-top: 0.5rem; }
-        .mt-3 { margin-top: 1rem; }
-        .mt-4 { margin-top: 1.5rem; }
-        .mt-5 { margin-top: 2rem; }
-        .mb-0 { margin-bottom: 0; }
-        .mb-1 { margin-bottom: 0.25rem; }
-        .mb-2 { margin-bottom: 0.5rem; }
-        .mb-3 { margin-bottom: 1rem; }
-        .mb-4 { margin-bottom: 1.5rem; }
-        .mb-5 { margin-bottom: 2rem; }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .text-sm { font-size: 0.875rem; }
-        .text-xs { font-size: 0.75rem; }
-        .text-muted { color: var(--color-text-light); }
-        .flex { display: flex; }
-        .flex-col { flex-direction: column; }
-        .items-center { align-items: center; }
-        .justify-between { justify-content: space-between; }
-        .gap-1 { gap: 0.25rem; }
-        .gap-2 { gap: 0.5rem; }
-        .gap-3 { gap: 1rem; }
-        /* Badge Styling */
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.25rem 0.5rem;
-            font-size: 0.75rem;
-            font-weight: 500;
-            border-radius: 9999px;
-            vertical-align: middle;
-            white-space: nowrap;
-            line-height: 1;
-        }
-        .badge-info {
-            background-color: var(--color-info-light);
-            color: var(--color-info);
-        }
-        .badge-warning {
-            background-color: var(--color-warning-light);
-            color: var(--color-warning);
-        }
-        .badge-success {
-            background-color: var(--color-secondary-light);
-            color: var(--color-secondary-dark);
-        }
-        .badge-danger {
-            background-color: var(--color-danger-light);
-            color: var(--color-danger);
-        }
-        .badge-vendor {
-            background-color: #f3e8ff;
-            color: #7e22ce;
-            margin-left: 0.375rem;
-        }
-        /* Port styling */
-        .port-list {
-            font-size: 0.875rem;
-            max-width: 100%;
-            max-height: 250px;
-            overflow-y: auto;
-            border: 1px solid var(--color-border);
-            border-radius: var(--radius-md);
-            padding: 0.75rem;
-            background-color: var(--color-background-alt);
-        }
-        .port-category {
-            margin-bottom: 0.625rem;
-            padding: 0.375rem;
-            border-bottom: 1px solid var(--color-border);
-        }
-        .port-category:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-        }
-        .port-category-name {
-            font-weight: 600;
-            color: var(--color-text);
-            margin-right: 0.5rem;
-        }
-        .port {
-            display: inline-flex;
-            align-items: center;
-            padding: 0.25rem 0.5rem;
-            margin: 0.125rem;
-            border-radius: var(--radius-sm);
-            background-color: #f9fafb;
-            border: 1px solid var(--color-border);
-            font-size: 0.75rem;
-        }
-        .port-known {
-            background-color: #eff6ff;
-            border-color: #bfdbfe;
-            color: #2563eb;
-            cursor: help;
-        }
-        .no-ports {
-            color: var(--color-text-light);
-            font-style: italic;
-            font-size: 0.875rem;
-        }
-        /* Card styling */
-        .card {
-            background-color: var(--color-card-bg);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow-md);
-            margin-bottom: 1.5rem;
-            overflow: hidden;
-        }
-        .card-header {
-            padding: 1rem 1.5rem;
-            background-color: var(--color-background-alt);
-            border-bottom: 1px solid var(--color-border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .card-title {
-            margin: 0;
-            font-size: 1.125rem;
-            color: var(--color-text);
-            font-weight: 600;
-        }
-        .card-body {
-            padding: 1.5rem;
-        }
-        /* Spinner */
-        .spinner {
-            display: inline-block;
-            width: 1em;
-            height: 1em;
-            border: 2px solid rgba(0, 0, 0, 0.1);
-            border-top-color: var(--color-primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .htmx-indicator {
-            display: none;
-            margin-left: 0.5rem;
-            color: var(--color-text-light);
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .htmx-request .htmx-indicator {
-            display: inline-flex;
-        }
-        /* Responsive */
-        @media (max-width: 768px) {
-            .nav-toggle {
-                display: block;
-            }
-            .nav-links {
-                display: none;
-                position: absolute;
-                top: 100%;
-                left: 0;
-                right: 0;
-                flex-direction: column;
-                background-color: var(--color-nav-bg);
-                padding: 0.5rem 0;
-                box-shadow: var(--shadow-md);
-            }
-            .nav-links.active {
-                display: flex;
-            }
-            .nav-links a {
-                display: block;
-                padding: 0.75rem 1.5rem;
-                border-radius: 0;
-            }
-            .btn-group {
-                flex-direction: column;
-            }
-            table {
-                display: block;
-                overflow-x: auto;
-            }
-            .card-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 0.75rem;
-            }
-        }
-    </style>
-</head>
-<body>
-    <header class="nav">
-        <div class="nav-container">
-            <a href="/" class="nav-brand">
-                <i class="fas fa-network-wired"></i>
-                <span>PyLocalDNS</span>
-            </a>
-            <button class="nav-toggle">
-                <i class="fas fa-bars"></i>
-            </button>
-            <ul class="nav-links">
-                <li><a href="/" class="active"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
-                <li><a href="/add"><i class="fas fa-plus"></i> Add Entry</a></li>
-                <li><a href="/scan"><i class="fas fa-search"></i> Scan Network</a></li>
-                <li><a href="/settings"><i class="fas fa-cog"></i> Settings</a></li>
-            </ul>
-        </div>
-    </header>
-    <div class="container">
-"""
-
-HTML_FOOTER = """
-    </div>
-    <footer class="mt-5 mb-3 text-center text-muted text-sm">
-        <p>PyLocalDNS - Lightweight DNS & DHCP Server</p>
-    </footer>
-    <script>
-        // Mobile navigation toggle
-        document.querySelector('.nav-toggle').addEventListener('click', function() {
-            document.querySelector('.nav-links').classList.toggle('active');
-        });
-        
-        // Set active nav link based on current page
-        document.addEventListener('DOMContentLoaded', function() {
-            const currentPath = window.location.pathname;
-            const navLinks = document.querySelectorAll('.nav-links a');
-            
-            navLinks.forEach(link => {
-                link.classList.remove('active');
-                if (link.getAttribute('href') === currentPath) {
-                    link.classList.add('active');
-                } else if (currentPath === '/' && link.getAttribute('href') === '/') {
-                    link.classList.add('active');
-                }
-            });
-        });
-        
-        // Confirmation dialogs
-        function confirmDelete(mac) {
-            return confirm('Are you sure you want to delete the entry for MAC: ' + mac + '?');
-        }
-    </script>
-</body>
-</html>
-"""
-
-
-# Make sure DNSRecord class is available to the WebUI module
-class DNSRecord:
-    def __init__(self, address, record_type):
-        self.address = address
-        self.record_type = record_type
-        self.ttl = 300  # Default TTL if not specified
 
 
 class WebUIHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the Web UI."""
     
-    # Common port descriptions (add more as needed)
-    PORT_DESCRIPTIONS = {
-        20: "FTP (Data)",
-        21: "FTP (Control)",
-        22: "SSH",
-        23: "Telnet",
-        25: "SMTP",
-        53: "DNS",
-        67: "DHCP (Server)",
-        68: "DHCP (Client)",
-        80: "HTTP",
-        88: "Kerberos",
-        110: "POP3",
-        111: "NFS/RPC",
-        115: "SFTP",
-        119: "NNTP",
-        123: "NTP",
-        135: "RPC",
-        137: "NetBIOS Name",
-        138: "NetBIOS Datagram",
-        139: "NetBIOS Session",
-        143: "IMAP",
-        161: "SNMP",
-        162: "SNMP Trap",
-        179: "BGP",
-        389: "LDAP",
-        427: "SLP",
-        443: "HTTPS",
-        445: "SMB/CIFS",
-        464: "Kerberos",
-        465: "SMTPS",
-        500: "IKE/IPsec",
-        515: "LPD/LPR",
-        548: "AFP",
-        554: "RTSP",
-        587: "SMTP (Submission)",
-        631: "IPP",
-        636: "LDAPS",
-        989: "FTPS (Data)",
-        990: "FTPS (Control)",
-        993: "IMAPS",
-        995: "POP3S",
-        1194: "OpenVPN",
-        1433: "MS SQL",
-        1521: "Oracle DB",
-        1701: "L2TP",
-        1723: "PPTP",
-        1883: "MQTT",
-        1900: "UPNP",
-        2049: "NFS",
-        2082: "cPanel",
-        2083: "cPanel SSL",
-        2222: "SSH (Alt)",
-        2375: "Docker API",
-        2376: "Docker API (SSL)",
-        3000: "Grafana",
-        3306: "MySQL",
-        3389: "RDP",
-        3724: "Blizzard Games",
-        3478: "STUN/TURN",
-        5000: "UPnP",
-        5001: "Synology DSM",
-        5060: "SIP",
-        5222: "XMPP",
-        5353: "mDNS",
-        5432: "PostgreSQL",
-        5683: "CoAP",
-        5900: "VNC",
-        5984: "CouchDB",
-        6379: "Redis",
-        6881: "BitTorrent",
-        8000: "Web Alt",
-        8080: "HTTP Proxy",
-        8083: "Proxy",
-        8086: "InfluxDB",
-        8096: "Jellyfin",
-        8123: "Home Assistant",
-        8443: "HTTPS Alt",
-        8883: "MQTT (SSL)",
-        9000: "Portainer",
-        9090: "Prometheus",
-        9091: "Transmission",
-        9100: "Printer Job",
-        9200: "Elasticsearch",
-        27017: "MongoDB",
-        32400: "Plex",
-        51820: "WireGuard"
-    }
+    # Common port descriptions imported from port_scanner.py
+    try:
+        from port_scanner import PORT_SERVICES
+        PORT_DESCRIPTIONS = PORT_SERVICES
+    except ImportError:
+        # Fallback if import fails
+        PORT_DESCRIPTIONS = {
+            22: "SSH",
+            53: "DNS", 
+            80: "HTTP",
+            443: "HTTPS"
+        }
 
     def __init__(self, *args, hosts_file=None, network_server=None, **kwargs):
         self.hosts_file = hosts_file
@@ -916,6 +272,63 @@ class WebUIHandler(BaseHTTPRequestHandler):
         # Force reload the hosts file
         self.hosts_file.last_modified = 0
         self.hosts_file.load_file()
+        
+    def do_GET(self):
+        """Handle GET requests."""
+        # Import the necessary modules based on the request path
+        if self.path == '/' or self.path.startswith('/?'):
+            # Import the home page rendering function
+            from webui_home import render_home_page
+            render_home_page(self)
+        elif self.path.startswith('/dashboard-content'):
+            from webui_home import render_dashboard_content
+            render_dashboard_content(self)
+        elif self.path.startswith('/add'):
+            from webui_edit import render_add_page
+            render_add_page(self)
+        elif self.path.startswith('/edit'):
+            from webui_edit import render_edit_page
+            render_edit_page(self)
+        elif self.path.startswith('/edit-lease'):
+            from webui_edit import render_edit_lease_page
+            render_edit_lease_page(self)
+        elif self.path.startswith('/delete'):
+            from webui_handlers import handle_delete_request
+            handle_delete_request(self)
+        elif self.path.startswith('/delete-lease'):
+            from webui_handlers import handle_delete_lease_request
+            handle_delete_lease_request(self)
+        elif self.path.startswith('/scan'):
+            from webui_scan import render_scan_page
+            render_scan_page(self)
+        elif self.path.startswith('/settings'):
+            from webui_settings import render_settings_page
+            render_settings_page(self)
+        else:
+            self._send_error(404, "Page not found")
+            
+    def do_POST(self):
+        """Handle POST requests."""
+        if self.path.startswith('/add'):
+            from webui_handlers import handle_add_request
+            handle_add_request(self)
+        elif self.path.startswith('/update'):
+            from webui_handlers import handle_update_request
+            handle_update_request(self)
+        elif self.path.startswith('/update-lease'):
+            from webui_handlers import handle_update_lease_request
+            handle_update_lease_request(self)
+        elif self.path.startswith('/scan'):
+            from webui_scan import handle_scan_request
+            handle_scan_request(self)
+        elif self.path.startswith('/scan-ports'):
+            from webui_scan import handle_scan_ports_request
+            handle_scan_ports_request(self)
+        elif self.path.startswith('/settings'):
+            from webui_settings import handle_settings_request
+            handle_settings_request(self)
+        else:
+            self._send_error(404, "Page not found")
 
 
 class WebUIServer:

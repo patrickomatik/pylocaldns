@@ -96,11 +96,13 @@ A lightweight Python server that provides both DNS and DHCP services using a sha
   - Complete DHCP protocol support (DISCOVER, OFFER, REQUEST, ACK, etc.)
 
 - **Web UI**:
-  - Simple browser-based management interface
+  - Flask-based browser management interface
   - View all MAC address, IP, and hostname mappings
   - Add and edit DNS entries for devices
   - Convert dynamic DHCP leases to static entries
   - Manage DHCP leases
+  - Network scanning functionality
+  - Dynamic content updates with HTMX
 
 - **DNS API**:
   - HTTP-based API for remote DNS management
@@ -113,29 +115,36 @@ A lightweight Python server that provides both DNS and DHCP services using a sha
 - **Common Features**:
   - Single configuration file for both services
   - Automatic reloading when the hosts file changes
-  - No external dependencies (uses standard Python libraries only)
-  - Multithreaded design to handle multiple requests simultaneously
-  - MAC address to hostname mapping
-  - MAC vendor identification (shows device manufacturers)
   - Detailed logging
 
 ## Requirements
 
 - Python 3.6 or higher
+- **Flask is required** for the web interface (no fallback available)
 - Root/Administrator privileges (if using the default ports 53 for DNS and 67/68 for DHCP)
 
-## Installation
+### Flask Requirement
 
-No additional dependencies are required beyond the Python standard library.
+PyLocalDNS requires Flask for its web interface. There is no fallback to a custom HTTP server.
 
 ```bash
-# Clone or download the repository
-git clone https://github.com/yourusername/network-server.git
-cd network-server
-
-# Make the script executable
-chmod +x network_server.py
+# Install Flask and all dependencies
+./install_flask.sh
 ```
+
+For more details, see [FLASK_REQUIREMENT.md](FLASK_REQUIREMENT.md).
+
+## Quick Start
+
+```bash
+# Install Flask and dependencies
+./install_flask.sh
+
+# Run the server with Flask web UI
+./run_flask_server.sh
+```
+
+The Web UI will be available at http://localhost:8080
 
 ## Usage
 
@@ -143,16 +152,16 @@ chmod +x network_server.py
 
 ```bash
 # Run just the DNS server
-sudo python network_server.py --hosts-file /path/to/hosts.txt
+sudo python network_server_flask.py --hosts-file /path/to/hosts.txt
 
 # Run both DNS and DHCP servers
-sudo python network_server.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200
+sudo python network_server_flask.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200
 
 # Run with Web UI
-sudo python network_server.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 --webui-enable
+sudo python network_server_flask.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 --webui-enable
 
 # Enable the DNS API
-sudo python network_server.py --hosts-file /path/to/hosts.txt --api-enable
+sudo python network_server_flask.py --hosts-file /path/to/hosts.txt --api-enable
 ```
 
 The server requires root privileges if you're using the standard DNS (53) and DHCP (67/68) ports.
@@ -188,7 +197,7 @@ The server requires root privileges if you're using the standard DNS (53) and DH
 
 ### Web UI
 
-When enabled, the Web UI is accessible at:
+When enabled, the Flask-based Web UI is accessible at:
 
 ```
 http://<server-ip>:8080/
@@ -200,6 +209,11 @@ The Web UI provides:
 - Ability to add new static entries
 - Ability to edit/update hostname information
 - Convert dynamic leases to static entries
+- Network scanning functionality 
+- Port scanning and display
+- Dynamic content updates using HTMX
+
+**Note:** Flask is required for the Web UI to function. See [FLASK_REQUIREMENT.md](FLASK_REQUIREMENT.md) for more information.
 
 ### DNS API
 
@@ -221,10 +235,10 @@ See the [API Documentation](api_readme.md) for more details and example usage.
 
 ```bash
 # Run on non-privileged ports for testing (requires root on Linux for ports <1024)
-python network_server.py --hosts-file ./hosts.txt --dns-port 5353 --interface 127.0.0.1
+python network_server_flask.py --hosts-file ./hosts.txt --dns-port 5353 --interface 127.0.0.1
 
 # Run as a full network server with DHCP, Web UI, and API
-sudo python network_server.py --hosts-file /etc/custom_hosts \
+sudo python network_server_flask.py --hosts-file /etc/custom_hosts \
   --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 \
   --dhcp-router 192.168.1.1 --webui-enable --api-enable
 ```
@@ -292,7 +306,7 @@ The project includes a test script to verify API functionality:
 
 ```bash
 # Start the server with API enabled
-sudo python network_server.py --hosts-file ./hosts.txt --api-enable
+sudo python network_server_flask.py --hosts-file ./hosts.txt --api-enable
 
 # Run the test script
 ./test_api.sh
@@ -320,7 +334,7 @@ Description=Network Server (DNS + DHCP)
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /path/to/network_server.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 --webui-enable --api-enable
+ExecStart=/usr/bin/python3 /path/to/network_server_flask.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 --webui-enable --api-enable
 Restart=on-failure
 User=root
 
@@ -387,6 +401,7 @@ Most systems are configured to use DHCP by default. To ensure clients use your D
 - Limited DHCP options support (basic network config only)
 - No IPv6 DHCP (DHCPv6) support
 - The DNS API does not use HTTPS by default
+- Flask is required for the Web UI (no fallback server available)
 
 ## Security Considerations
 

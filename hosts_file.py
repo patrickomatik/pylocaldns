@@ -52,6 +52,50 @@ class HostsFile:
 
         self.load_file()
 
+    def add_a_record(self, hostname, ip):
+        """Add an A record (IPv4) for a hostname."""
+        # Create the DNS record
+        dns_record = DNSRecord(ip, 1)  # 1 is the record type for A records (IPv4)
+        
+        # Add or update the DNS record for this hostname
+        if hostname.lower() not in self.dns_records:
+            self.dns_records[hostname.lower()] = []
+        
+        # Remove any existing A records for this hostname
+        self.dns_records[hostname.lower()] = [r for r in self.dns_records[hostname.lower()] 
+                                             if r.record_type != 1 or r.address != ip]
+        
+        # Add the new record
+        self.dns_records[hostname.lower()].append(dns_record)
+        
+        # Make sure the hostname is in the IP-to-hostnames map
+        if ip not in self.ip_to_hostnames:
+            self.ip_to_hostnames[ip] = []
+        if hostname not in self.ip_to_hostnames[ip]:
+            self.ip_to_hostnames[ip].append(hostname)
+            
+    def add_aaaa_record(self, hostname, ip):
+        """Add an AAAA record (IPv6) for a hostname."""
+        # Create the DNS record
+        dns_record = DNSRecord(ip, 28)  # 28 is the record type for AAAA records (IPv6)
+        
+        # Add or update the DNS record for this hostname
+        if hostname.lower() not in self.dns_records:
+            self.dns_records[hostname.lower()] = []
+        
+        # Remove any existing AAAA records for this hostname
+        self.dns_records[hostname.lower()] = [r for r in self.dns_records[hostname.lower()] 
+                                             if r.record_type != 28 or r.address != ip]
+        
+        # Add the new record
+        self.dns_records[hostname.lower()].append(dns_record)
+        
+        # Make sure the hostname is in the IP-to-hostnames map
+        if ip not in self.ip_to_hostnames:
+            self.ip_to_hostnames[ip] = []
+        if hostname not in self.ip_to_hostnames[ip]:
+            self.ip_to_hostnames[ip].append(hostname)
+
     def _setup_dhcp_range(self, dhcp_range: Tuple[str, str]) -> None:
         """Setup the DHCP dynamic range of IP addresses."""
         start_ip, end_ip = dhcp_range

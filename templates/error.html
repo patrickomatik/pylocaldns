@@ -1,0 +1,23 @@
+{% extends base_template %}
+
+{% block title %}Error {{ error_code }} - PyLocalDNS{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-exclamation-triangle"></i> Error {{ error_code }}</h2>
+        </div>
+        <div class="card-body text-center">
+            <div class="py-4">
+                <i class="fas fa-exclamation-circle text-danger" style="font-size: 4rem;"></i>
+                <h1 class="mt-3">{{ error_code }}</h1>
+                <p class="mt-3">{{ error_message }}</p>
+                <a href="{{ url_for('home') }}" class="btn btn-primary mt-4">
+                    <i class="fas fa-home"></i> Return to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,199 +1,172 @@
 #!/usr/bin/env python3
 """
-Web UI Network Scanning Module for the DNS/DHCP Network Server
+Web UI Network Scanning Module
 
-This module provides methods for scanning the network and displaying the results.
+This module provides functions for rendering scan pages and handling scan requests.
 """
 
-import threading
 import logging
-import re
-from datetime import datetime
-from webui_core import HTML_HEADER, HTML_FOOTER
-
-# Try to import port database functions
-try:
-    from port_database import get_port_db
-    USE_PORT_DB = True
-except ImportError:
-    USE_PORT_DB = False
-    get_port_db = lambda: None
+import threading
+from urllib.parse import parse_qs, urlparse
+from webui_templates import HTML_HEADER, HTML_FOOTER, render_message
 
 # Setup logging
 logger = logging.getLogger('webui_scan')
 
-# Import ip_utils for network scanning
-from ip_utils import scan_network_async
+# Try to import scanning utilities
+try:
+    from network_scanner import scan_network_async
+    from port_scanner import scan_client_ports
+    from port_database import get_port_db
+    USE_PORT_DB = True
+except ImportError:
+    # Use fallback scanning
+    USE_PORT_DB = False
+    from ip_utils import scan_network_async, scan_client_ports
+    get_port_db = lambda: None
+    logger.warning("Using fallback scanning utilities")
 
 
-def render_scan_page(self, message=None, message_type=None):
+def render_scan_page(handler):
     """Render the network scan page."""
+    # Parse query parameters for message display
+    message = None
+    message_type = "info"
+    
+    if "?" in handler.path:
+        query = parse_qs(handler.path.split("?")[1])
+        message = query.get("message", [""])[0]
+        message_type = query.get("type", ["info"])[0]
+    
+    # Get scan results if available
+    scan_results = {}
+    if hasattr(handler, 'scan_results'):
+        scan_results = handler.scan_results
+    
     content = HTML_HEADER
-
-    # Display message if any
+    
+    # Add message if any
     if message:
-        icon_class = {
-            'success': 'fa-check-circle',
-            'error': 'fa-exclamation-circle',
-            'warning': 'fa-exclamation-triangle',
-            'info': 'fa-info-circle'
-        }.get(message_type, 'fa-info-circle')
-        
-        content += f'''
-        <div class="message {message_type}">
-            <i class="fas {icon_class}"></i>
-            <div>{message}</div>
-        </div>'''
-
+        content += render_message(message, message_type)
+    
+    # Add scan instructions and form
     content += """
-        <div class="content-container">
-            <div class="flex justify-between items-center mb-4">
-                <div>
-                    <h1 class="mt-0">Network Scanner</h1>
-                    <p class="mb-0 text-muted">Discover devices and prevent IP conflicts</p>
-                </div>
-            </div>
-            
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h2 class="card-title"><i class="fas fa-search"></i> Scan Network</h2>
-                </div>
-                <div class="card-body">
-                    <form method="post" action="/scan">
-                        <p>This will scan the entire DHCP range for active devices. Discovered devices will be added to the 
-                        configuration automatically. This process may take a few minutes depending on the size of your network.</p>
-                        
-                        <div class="form-group mb-0 text-center">
-                            <button type="submit" class="btn btn-warning">
-                                <i class="fas fa-search"></i> Start Network Scan
-                            </button>
-                            <a href="/" class="btn btn-plain">
-                                <i class="fas fa-times"></i> Cancel
-                            </a>
-                        </div>
-                    </form>
-                </div>
-            </div>
+    <div class="content-container mb-4">
+        <h1>Network Scanner</h1>
+        <p class="mb-3">
+            Scan your network to discover devices and automatically add them to the configuration.
+            This helps prevent IP conflicts and makes it easier to configure your network.
+        </p>
+        
+        <form method="post" action="/scan">
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-search"></i> Start Network Scan
+            </button>
+        </form>
+    </div>
     """
     
-    # Show previous scan results if available
-    if hasattr(self, 'scan_results') and self.scan_results:
+    # Add scan results if available
+    if scan_results:
         content += """
-            <div class="card">
-                <div class="card-header">
-                    <h2 class="card-title"><i class="fas fa-list"></i> Previous Scan Results</h2>
-                    <div>
-                        <span class="badge badge-info">{count} Devices</span>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>IP Address</th>
-                                <th>MAC Address</th>
-                                <th>Status</th>
-                                <th>Open Ports</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-        """.format(count=len(self.scan_results))
+        <div class="content-container">
+            <h2>Scan Results</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>IP Address</th>
+                        <th>MAC Address</th>
+                        <th>Status</th>
+                        <th>Open Ports</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
         
-        for ip, data in self.scan_results.items():
-            mac = data.get('mac', 'Unknown')
-            status = data.get('status', 'Discovered')
+        # Add each scan result
+        for ip, info in sorted(scan_results.items()):
+            mac = info.get('mac', 'Unknown')
+            status = info.get('status', 'Discovered')
+            ports = info.get('ports', [])
             
-            status_badge_class = {
-                'Added': 'badge-success',
-                'Already Configured': 'badge-info',
-                'Pre-allocated': 'badge-warning'
-            }.get(status, 'badge-secondary')
+            # Format the MAC address vendor information
+            vendor_badge = handler._format_vendor(mac)
             
-            status_badge = f'<span class="badge {status_badge_class}">{status}</span>'
+            # Format the ports information
+            ports_display = handler._format_ports(ports)
             
-            # Only show Edit button if we have a valid MAC address
-            edit_button = ''
-            if mac and mac != 'Unknown':
-                edit_button = f'''
-                <a href="/edit?mac={mac}" class="btn btn-sm btn-edit">
-                    <i class="fas fa-edit"></i> Edit
-                </a>'''
-            
-            # Get port information
-            ports = data.get('ports', [])
+            # Determine status badge class
+            status_class = {
+                'Discovered': 'badge-info',
+                'Already Configured': 'badge-success',
+                'Pre-allocated': 'badge-warning',
+                'Added': 'badge-primary'
+            }.get(status, 'badge-info')
             
             content += f"""
-                            <tr>
-                                <td><code>{ip}</code></td>
-                                <td>
-                                    <div class="flex items-center gap-2">
-                                        <i class="fas fa-network-wired text-muted text-sm"></i>
-                                        <span>{mac}</span>
-                                        {self._format_vendor(mac) if hasattr(self, '_format_vendor') else ''}
-                                    </div>
-                                </td>
-                                <td>{status_badge}</td>
-                                <td>
-                                    {self._format_ports(ports) if hasattr(self, '_format_ports') else ', '.join(map(str, ports)) if ports else '<span class="text-muted">None detected</span>'}
-                                </td>
-                                <td>
-                                    {edit_button}
-                                </td>
-                            </tr>
+            <tr>
+                <td>{ip}</td>
+                <td>{mac}{vendor_badge}</td>
+                <td><span class="badge {status_class}">{status}</span></td>
+                <td>{ports_display}</td>
+            </tr>
             """
         
         content += """
-                        </tbody>
-                    </table>
-                </div>
+                </tbody>
+            </table>
+            
+            <div class="mt-4">
+                <p>
+                    <strong>Note:</strong> Newly discovered devices are automatically pre-allocated in your configuration
+                    to prevent IP conflicts. You can edit these entries as needed.
+                </p>
+                <a href="/" class="btn btn-primary mt-3">
+                    <i class="fas fa-arrow-left"></i> Return to Dashboard
+                </a>
             </div>
+        </div>
         """
     
-    content += "</div>" # Close content-container
     content += HTML_FOOTER
-    return content.encode()
+    handler._send_response(content.encode())
 
 
-def handle_scan_request(self):
-    """Handle a network scan request."""
-    if not self.hosts_file or not self.hosts_file.dhcp_range:
-        return self._send_error(400, "DHCP range not configured. Please set up a DHCP range in Settings first.")
+def handle_scan_request(handler):
+    """Handle a request to scan the network."""
+    if not handler.hosts_file or not handler.hosts_file.dhcp_range:
+        handler._send_redirect("/scan?message=DHCP+range+not+configured.+Please+set+up+a+DHCP+range+in+Settings+first.&type=error")
+        return
     
     try:
-        # Set up a place to store results for display
-        self.scan_results = {}
-        
-        # Define progress callback to track scan progress
-        def progress_callback(scanned, total):
-            # Update the class-level scan_progress for display in subsequent page loads
-            if not hasattr(self, 'scan_progress'):
-                self.scan_progress = (0, 0)
-            self.scan_progress = (scanned, total)
-        
         # Start the scan in a new thread so we can return a response to the user
         def scan_thread():
             try:
                 # Get the DHCP range for scanning
-                if not self.hosts_file.dhcp_range or len(self.hosts_file.dhcp_range) != 2:
+                if not handler.hosts_file.dhcp_range or len(handler.hosts_file.dhcp_range) != 2:
                     logger.error("Invalid DHCP range")
                     return
                     
-                ip_range = tuple(self.hosts_file.dhcp_range)
+                ip_range = tuple(handler.hosts_file.dhcp_range)
                 
-                # Perform the scan using scan_network_async
+                # Define a progress callback
+                def progress_callback(scanned, total):
+                    logger.info(f"Scan progress: {scanned}/{total} ({int(scanned/total*100)}%)")
+                
+                # Perform the scan
                 discovered = scan_network_async(ip_range, callback=progress_callback, use_db=USE_PORT_DB)
                 
                 # Process results for display
+                scan_results = {}
                 for ip, device_info in discovered.items():
                     status = "Discovered"
                     mac = device_info.get('mac')
                     ports = device_info.get('ports', [])
                     
                     # Check if it's already in our configuration
-                    if ip in self.hosts_file.reserved_ips:
+                    if handler.hosts_file.get_ip_for_mac(mac) == ip if mac else False:
                         status = "Already Configured"
-                    elif self.hosts_file.get_hostnames_for_ip(ip) and "preallocated" in self.hosts_file.get_hostnames_for_ip(ip):
+                    elif handler.hosts_file.get_hostnames_for_ip(ip) and "preallocated" in handler.hosts_file.get_hostnames_for_ip(ip):
                         status = "Pre-allocated"
                     else:
                         # This is a newly discovered device, add it as pre-allocated
@@ -213,33 +186,76 @@ def handle_scan_request(self):
                         
                         # Add to hosts file as preallocated
                         # First try using the standardized method if available
-                        if hasattr(self.hosts_file, '_add_preallocated_ip'):
-                            self.hosts_file._add_preallocated_ip(ip, device_info)
+                        if hasattr(handler.hosts_file, '_add_preallocated_ip'):
+                            handler.hosts_file._add_preallocated_ip(ip, device_info)
                         else:
                             # Fallback method: add to ip_to_hostnames with 'preallocated' tag
-                            self.hosts_file.ip_to_hostnames[ip] = ['preallocated']
+                            handler.hosts_file.ip_to_hostnames[ip] = ['preallocated']
                         status = "Added"
                     
-                    self.scan_results[ip] = {
+                    scan_results[ip] = {
                         'mac': mac or 'Unknown',
                         'status': status,
                         'ports': ports
                     }
                 
-                # Update the hosts file on disk
-                self._update_hosts_file()
+                # Store results for display
+                handler.scan_results = scan_results
                 
-                # Clear progress
-                self.scan_progress = (0, 0)
+                # Update the hosts file
+                handler._update_hosts_file()
             except Exception as e:
                 logger.error(f"Error in scan thread: {e}")
         
         # Start the scan thread
         threading.Thread(target=scan_thread, daemon=True).start()
         
-        # Redirect to the scan page with a message
-        self._send_redirect('/scan?message=Network+scan+started.+This+may+take+a+few+minutes.&type=success')
+        # Redirect with message
+        handler._send_redirect("/scan?message=Network+scan+started.+This+may+take+a+few+minutes.&type=success")
     except Exception as e:
         logger.error(f"Error handling scan request: {e}")
-        self._send_error(500, f"Error starting network scan: {str(e)}")
+        handler._send_redirect(f"/scan?message=Error+starting+network+scan:+{str(e)}&type=error")
 
+
+def handle_scan_ports_request(handler):
+    """Handle a request to scan ports on all known devices."""
+    if USE_PORT_DB:
+        try:
+            # Get all devices from the hosts file
+            devices = []
+            
+            # Add static entries
+            for mac, ip in handler.hosts_file.mac_to_ip.items():
+                devices.append(ip)
+            
+            # Add dynamic leases
+            for mac, lease in handler.hosts_file.leases.items():
+                if not lease.is_expired():
+                    devices.append(lease.ip_address)
+            
+            # Remove duplicates
+            devices = list(set(devices))
+            
+            # Scan ports for all devices in a separate thread
+            def scan_thread():
+                try:
+                    for ip in devices:
+                        try:
+                            # Run a fresh scan
+                            scan_client_ports(ip)
+                            logger.info(f"Port scan completed for {ip}")
+                        except Exception as e:
+                            logger.error(f"Error scanning ports for {ip}: {e}")
+                except Exception as e:
+                    logger.error(f"Error in port scan thread: {e}")
+            
+            # Start the scan thread
+            threading.Thread(target=scan_thread, daemon=True).start()
+            
+            # Redirect with success message
+            handler._send_redirect("/?message=Port+scan+started.+Results+will+be+updated+as+they+become+available.&type=success")
+        except Exception as e:
+            logger.error(f"Error starting port scan: {e}")
+            handler._send_redirect(f"/?message=Error+starting+port+scan:+{str(e)}&type=error")
+    else:
+        handler._send_redirect("/?message=Port+scanning+requires+database+support&type=error")

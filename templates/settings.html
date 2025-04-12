@@ -1,0 +1,81 @@
+{% extends 'base_flask.html' %}
+
+{% block content %}
+<div class="content-container">
+    <div class="flex justify-between items-center mb-4">
+        <div>
+            <h1 class="mt-0">Settings</h1>
+            <p class="mb-0 text-muted">Configure DHCP and network settings</p>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-cog"></i> Network Configuration</h2>
+        </div>
+        <div class="card-body">
+            {% if errors %}
+                <div class="message error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <div>
+                        {% for error in errors %}
+                            {{ error }}<br>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+            
+            <form method="post" action="/save-settings">
+                <div class="checkbox-group mb-4">
+                    <input type="checkbox" id="dhcp_enabled" name="dhcp_enabled" value="yes" {% if dhcp_enabled %}checked{% endif %}>
+                    <label for="dhcp_enabled">Enable DHCP Server</label>
+                </div>
+
+                <h3><i class="fas fa-network-wired"></i> DHCP Settings</h3>
+
+                <div class="form-group">
+                    <label for="dhcp_range_start">DHCP IP Range Start:</label>
+                    <input type="text" id="dhcp_range_start" name="dhcp_range_start" value="{{ dhcp_range_start }}" placeholder="192.168.1.100">
+                </div>
+
+                <div class="form-group">
+                    <label for="dhcp_range_end">DHCP IP Range End:</label>
+                    <input type="text" id="dhcp_range_end" name="dhcp_range_end" value="{{ dhcp_range_end }}" placeholder="192.168.1.200">
+                </div>
+
+                <div class="form-group">
+                    <label for="subnet_mask">Subnet Mask:</label>
+                    <input type="text" id="subnet_mask" name="subnet_mask" value="{{ subnet_mask }}" placeholder="255.255.255.0">
+                </div>
+
+                <div class="form-group">
+                    <label for="router_ip">Default Gateway/Router IP:</label>
+                    <input type="text" id="router_ip" name="router_ip" value="{{ router_ip }}" placeholder="192.168.1.1">
+                </div>
+
+                <div class="form-group">
+                    <label for="dns_servers">DNS Servers (comma-separated):</label>
+                    <input type="text" id="dns_servers" name="dns_servers" value="{{ dns_servers }}" placeholder="8.8.8.8, 8.8.4.4">
+                </div>
+
+                <div class="form-group">
+                    <label for="lease_time">Default Lease Time (seconds):</label>
+                    <input type="text" id="lease_time" name="lease_time" value="{{ lease_time }}" placeholder="86400">
+                    <p class="text-muted text-sm mt-1 mb-0">Default is 86400 seconds (24 hours)</p>
+                </div>
+
+                <div class="form-group mb-0 flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                    <a href="/" class="btn btn-plain">
+                        <i class="fas fa-times"></i> Cancel
+                    </a>
+                </div>
+
+                <p class="text-muted text-sm mt-4">Note: Some changes may require restarting the server to take effect.</p>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

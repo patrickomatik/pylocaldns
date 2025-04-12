@@ -1,0 +1,24 @@
+{% extends 'base_flask.html' %}
+
+{% block content %}
+<div class="content-container">
+    <div class="flex justify-between items-center mb-3">
+        <div>
+            <h1 class="mt-0">Network Dashboard</h1>
+            <p class="mb-0 text-muted">Manage your local DNS and DHCP entries</p>
+        </div>
+        <div class="flex gap-2">
+            <a href="{{ url_for('routes.scan_network') }}" class="btn btn-secondary">
+                <i class="fas fa-search"></i> Scan Network
+            </a>
+            <a href="{{ url_for('routes.add_entry') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Add Entry
+            </a>
+        </div>
+    </div>
+    
+    <div id="dashboard-content" hx-get="{{ url_for('routes.dashboard_content') }}" hx-trigger="every 10s" hx-swap="innerHTML">
+        {% include 'home_content.html' %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Network Scan - PyLocalDNS{% endblock %}
+
+{% block content %}
+<div class="content-container">
+    <div class="flex justify-between items-center mb-4">
+        <div>
+            <h1 class="mt-0">Network Scanner</h1>
+            <p class="mb-0 text-muted">Discover devices and prevent IP conflicts</p>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h2 class="card-title"><i class="fas fa-search"></i> Scan Network</h2>
+        </div>
+        <div class="card-body">
+            <form method="post" action="/scan">
+                <p>This will scan the entire DHCP range for active devices. Discovered devices will be added to the 
+                configuration automatically. This process may take a few minutes depending on the size of your network.</p>
+                
+                <div class="form-group mb-0 text-center">
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-search"></i> Start Network Scan
+                    </button>
+                    <a href="/" class="btn btn-plain">
+                        <i class="fas fa-times"></i> Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    {% if scan_results %}
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title"><i class="fas fa-list"></i> Scan Results</h2>
+                <div>
+                    <span class="badge badge-info">{{ scan_results|length }} Devices</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>IP Address</th>
+                            <th>MAC Address</th>
+                            <th>Status</th>
+                            <th>Open Ports</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ip, data in scan_results.items() %}
+                            {% set mac = data.mac %}
+                            {% set status = data.status %}
+                            {% set ports = data.ports|default([]) %}
+                            
+                            {% set status_badge_class = {
+                                'Added': 'badge-success',
+                                'Already Configured': 'badge-info',
+                                'Pre-allocated': 'badge-warning'
+                            }.get(status, 'badge-secondary') %}
+                            
+                            <tr>
+                                <td><code>{{ ip }}</code></td>
+                                <td>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-network-wired text-muted text-sm"></i>
+                                        <span>{{ mac }}</span>
+                                        {{ format_vendor(mac)|safe }}
+                                    </div>
+                                </td>
+                                <td><span class="badge {{ status_badge_class }}">{{ status }}</span></td>
+                                <td>
+                                    {{ format_ports(ports)|safe }}
+                                </td>
+                                <td>
+                                    {% if mac and mac != 'Unknown' %}
+                                        <a href="/edit?mac={{ mac }}" class="btn btn-sm btn-edit">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
