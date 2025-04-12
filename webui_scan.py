@@ -22,6 +22,9 @@ except ImportError:
 # Setup logging
 logger = logging.getLogger('webui_scan')
 
+# Import ip_utils for network scanning
+from ip_utils import scan_network_async
+
 
 def render_scan_page(self, message=None, message_type=None):
     """Render the network scan page."""
@@ -171,8 +174,15 @@ def handle_scan_request(self):
         # Start the scan in a new thread so we can return a response to the user
         def scan_thread():
             try:
-                # Perform the scan
-                discovered = self.hosts_file.scan_network()
+                # Get the DHCP range for scanning
+                if not self.hosts_file.dhcp_range or len(self.hosts_file.dhcp_range) != 2:
+                    logger.error("Invalid DHCP range")
+                    return
+                    
+                ip_range = tuple(self.hosts_file.dhcp_range)
+                
+                # Perform the scan using scan_network_async
+                discovered = scan_network_async(ip_range, callback=progress_callback, use_db=USE_PORT_DB)
                 
                 # Process results for display
                 for ip, device_info in discovered.items():
@@ -201,8 +211,13 @@ def handle_scan_request(self):
                             except Exception as e:
                                 logger.error(f"Error updating port database for {ip}: {e}")
                         
-                        # Add to hosts file
-                        self.hosts_file._add_preallocated_ip(ip, device_info)
+                        # Add to hosts file as preallocated
+                        # First try using the standardized method if available
+                        if hasattr(self.hosts_file, '_add_preallocated_ip'):
+                            self.hosts_file._add_preallocated_ip(ip, device_info)
+                        else:
+                            # Fallback method: add to ip_to_hostnames with 'preallocated' tag
+                            self.hosts_file.ip_to_hostnames[ip] = ['preallocated']
                         status = "Added"
                     
                     self.scan_results[ip] = {
@@ -227,3 +242,4 @@ def handle_scan_request(self):
     except Exception as e:
         logger.error(f"Error handling scan request: {e}")
         self._send_error(500, f"Error starting network scan: {str(e)}")
+
