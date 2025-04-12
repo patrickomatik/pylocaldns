@@ -236,10 +236,14 @@ class HostsFile:
         logger.warning(f"All available IPs are currently in use on the network")
         return None
 
-    def _add_preallocated_ip(self, ip_address: str) -> None:
+    def _add_preallocated_ip(self, ip_address: str, device_info: Dict[str, Any] = None) -> None:
         """
         Add an IP address as pre-allocated in the configuration.
         This is used when we detect an IP is in use but not in our system.
+        
+        Args:
+            ip_address: The IP address to pre-allocate
+            device_info: Optional dictionary containing device information like MAC and open ports
         """
         # Add to reserved IPs
         self.reserved_ips.add(ip_address)
@@ -249,15 +253,26 @@ class HostsFile:
             self.available_ips.discard(ip_address)
             logger.debug(f"Removed {ip_address} from available DHCP pool (pre-allocated)")
 
-        # Try to get MAC address from ARP table
-        mac_address = ip_utils.get_mac_from_arp(ip_address)
+        # Gather device information
+        device_info = device_info or {}
+        mac_address = device_info.get('mac') or ip_utils.get_mac_from_arp(ip_address)
+        open_ports = device_info.get('ports', [])
+        
+        # Generate base hostname
         hostname = f"device-{ip_address.replace('.', '-')}"
+        
+        # Add port information to the hostname tags if available
+        host_tags = ["preallocated"]
+        if open_ports:
+            # Store port information in a compact format
+            port_tag = f"ports-{','.join(map(str, sorted(open_ports)))}"
+            host_tags.append(port_tag)
 
         if mac_address:
             # Add to static mappings with discovered MAC
             logger.info(f"Adding pre-allocated IP {ip_address} with MAC {mac_address} to configuration")
             self.mac_to_ip[mac_address] = ip_address
-            self.ip_to_hostnames[ip_address] = [hostname, "preallocated"]
+            self.ip_to_hostnames[ip_address] = [hostname] + host_tags
 
             # Create DNS records
             record_type = DNS_QUERY_TYPE_A  # IPv4
@@ -267,7 +282,7 @@ class HostsFile:
         else:
             # Just add the IP as a hostname mapping if we can't find MAC
             logger.info(f"Adding pre-allocated IP {ip_address} to configuration (MAC unknown)")
-            self.ip_to_hostnames[ip_address] = [hostname, "preallocated"]
+            self.ip_to_hostnames[ip_address] = [hostname] + host_tags
 
             # Create DNS records
             record_type = DNS_QUERY_TYPE_A  # IPv4
@@ -394,7 +409,7 @@ class HostsFile:
         if expired:
             logger.info(f"Cleaned up {len(expired)} expired leases")
             
-    def scan_network(self) -> Dict[str, Optional[str]]:
+    def scan_network(self) -> Dict[str, Dict[str, Any]]:
         """
         Scan the network for active devices and update the configuration.
         
@@ -403,7 +418,9 @@ class HostsFile:
         of the network.
         
         Returns:
-            Dictionary mapping IP addresses to MAC addresses for discovered devices
+            Dictionary mapping IP addresses to device information including:
+            - 'mac': MAC address (or None if not found)
+            - 'ports': List of open ports
         """
         if not self.dhcp_range:
             logger.warning("Cannot scan network without DHCP range configured")
@@ -420,10 +437,13 @@ class HostsFile:
         discovered = ip_utils.scan_network_async(self.dhcp_range, callback=progress_callback)
         
         # Update our configuration with discovered devices
-        for ip, mac in discovered.items():
+        for ip, device_info in discovered.items():
             if ip not in self.reserved_ips and ip not in [lease.ip_address for lease in self.leases.values()]:
-                logger.info(f"Discovered new device at {ip}" + (f" with MAC {mac}" if mac else ""))
-                self._add_preallocated_ip(ip)
+                mac = device_info.get('mac')
+                ports = device_info.get('ports', [])
+                port_info = f" with open ports: {', '.join(map(str, ports))}" if ports else ""
+                logger.info(f"Discovered new device at {ip}" + (f" with MAC {mac}" if mac else "") + port_info)
+                self._add_preallocated_ip(ip, device_info)
         
         logger.info(f"Network scan complete. Discovered {len(discovered)} active devices.")
         return discovered

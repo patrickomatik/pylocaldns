@@ -188,6 +188,29 @@ HTML_HEADER = """<!DOCTYPE html>
         .badge-success {
             background-color: #5cb85c;
         }
+        
+        /* Port styling */
+        .port-list {
+            font-size: 0.9em;
+        }
+        .port {
+            display: inline-block;
+            padding: 2px 5px;
+            margin: 1px;
+            border-radius: 3px;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+        }
+        .port-known {
+            background-color: #e8f7ff;
+            border-color: #bde3ff;
+            color: #0066cc;
+            cursor: help;
+        }
+        .no-ports {
+            color: #999;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -228,6 +251,38 @@ class DNSRecord:
 
 class WebUIHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the Web UI."""
+    
+    # Common port descriptions (add more as needed)
+    PORT_DESCRIPTIONS = {
+        20: "FTP (Data)",
+        21: "FTP (Control)",
+        22: "SSH",
+        23: "Telnet",
+        25: "SMTP",
+        53: "DNS",
+        80: "HTTP",
+        110: "POP3",
+        123: "NTP",
+        139: "NetBIOS",
+        143: "IMAP",
+        161: "SNMP",
+        443: "HTTPS",
+        445: "SMB",
+        465: "SMTPS",
+        587: "SMTP (Submission)",
+        993: "IMAPS",
+        995: "POP3S",
+        1194: "OpenVPN",
+        1433: "MS SQL",
+        1723: "PPTP",
+        3306: "MySQL",
+        3389: "RDP",
+        5000: "UPnP",
+        5432: "PostgreSQL",
+        5900: "VNC",
+        8080: "HTTP (Alt)",
+        8443: "HTTPS (Alt)"
+    }
 
     def __init__(self, *args, hosts_file=None, network_server=None, **kwargs):
         self.hosts_file = hosts_file
@@ -240,6 +295,21 @@ class WebUIHandler(BaseHTTPRequestHandler):
         logger.info("%s - - [%s] %s" % (self.client_address[0],
                                         self.log_date_time_string(),
                                         format % args))
+                                        
+    def _format_ports(self, ports):
+        """Format a list of port numbers into a user-friendly HTML display."""
+        if not ports:
+            return "<span class='no-ports'>None detected</span>"
+            
+        result = []
+        for port in sorted(ports):
+            if port in self.PORT_DESCRIPTIONS:
+                service = self.PORT_DESCRIPTIONS[port]
+                result.append(f"<span class='port port-known' title='{service}'>{port} ({service})</span>")
+            else:
+                result.append(f"<span class='port'>{port}</span>")
+                
+        return "<div class='port-list'>" + ", ".join(result) + "</div>"
 
     def _send_response(self, content, content_type='text/html'):
         """Send an HTTP response with the specified content."""
@@ -273,11 +343,29 @@ class WebUIHandler(BaseHTTPRequestHandler):
         if self.hosts_file:
             for mac, ip in self.hosts_file.mac_to_ip.items():
                 hostnames = self.hosts_file.get_hostnames_for_ip(ip)
-                static_entries.append({
+                
+                # Check for port information in hostnames
+                ports = []
+                display_hostnames = []
+                for hostname in hostnames:
+                    if hostname.startswith('ports-'):
+                        try:
+                            # Extract port numbers from the tag
+                            port_list = hostname[6:].split(',')
+                            ports = [int(p) for p in port_list if p.isdigit()]
+                        except (ValueError, IndexError):
+                            pass
+                    elif hostname != 'preallocated':
+                        display_hostnames.append(hostname)
+                
+                entry = {
                     'mac': mac,
                     'ip': ip,
-                    'hostnames': ', '.join(hostnames) if hostnames else '-'
-                })
+                    'hostnames': ', '.join(display_hostnames) if display_hostnames else '-',
+                    'ports': ports
+                }
+                
+                static_entries.append(entry)
 
             # Get dynamic leases
             for mac, lease in self.hosts_file.leases.items():
@@ -286,13 +374,28 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     remaining = int(lease.expiry_time - time.time())
                     hours, remainder = divmod(remaining, 3600)
                     minutes, seconds = divmod(remainder, 60)
+                    
+                    # Check for port information in hostnames
+                    ports = []
+                    display_hostnames = []
+                    for hostname in hostnames:
+                        if hostname.startswith('ports-'):
+                            try:
+                                # Extract port numbers from the tag
+                                port_list = hostname[6:].split(',')
+                                ports = [int(p) for p in port_list if p.isdigit()]
+                            except (ValueError, IndexError):
+                                pass
+                        elif hostname != 'preallocated':
+                            display_hostnames.append(hostname)
 
                     dynamic_leases.append({
                         'mac': mac,
                         'ip': lease.ip_address,
-                        'hostnames': ', '.join(hostnames) if hostnames else '-',
+                        'hostnames': ', '.join(display_hostnames) if display_hostnames else '-',
                         'hostname': lease.hostname or '-',
-                        'expires': f"{hours}h {minutes}m {seconds}s"
+                        'expires': f"{hours}h {minutes}m {seconds}s",
+                        'ports': ports
                     })
 
         # Build the page content
@@ -316,6 +419,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     <th>MAC Address</th>
                     <th>IP Address</th>
                     <th>Hostnames</th>
+                    <th>Open Ports</th>
                     <th>Actions</th>
                 </tr>
             """
@@ -326,6 +430,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     <td>{entry['mac']}</td>
                     <td>{entry['ip']}</td>
                     <td>{entry['hostnames']}</td>
+                    <td>
+                        {self._format_ports(entry['ports'])}
+                    </td>
                     <td>
                         <a href="/edit?mac={entry['mac']}" class="btn btn-edit">Edit</a>
                         <a href="/delete?mac={entry['mac']}" class="btn btn-delete" onclick="return confirmDelete('{entry['mac']}')">Delete</a>
@@ -349,6 +456,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     <th>IP Address</th>
                     <th>Hostname</th>
                     <th>DNS Names</th>
+                    <th>Open Ports</th>
                     <th>Expires In</th>
                     <th>Actions</th>
                 </tr>
@@ -361,6 +469,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     <td>{lease['ip']}</td>
                     <td>{lease['hostname']}</td>
                     <td>{lease['hostnames']}</td>
+                    <td>
+                        {self._format_ports(lease['ports'])}
+                    </td>
                     <td>{lease['expires']}</td>
                     <td>
                         <a href="/edit-lease?mac={lease['mac']}" class="btn btn-edit">Edit</a>
@@ -1133,6 +1244,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                         <th>IP Address</th>
                         <th>MAC Address</th>
                         <th>Status</th>
+                        <th>Open Ports</th>
                         <th>Actions</th>
                     </tr>
             """
@@ -1156,11 +1268,17 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 if mac and mac != 'Unknown':
                     edit_button = f'<a href="/edit?mac={mac}" class="btn btn-edit">Edit</a>'
                 
+                # Get port information
+                ports = data.get('ports', [])
+                
                 content += f"""
                     <tr>
                         <td>{ip}</td>
                         <td>{mac}</td>
                         <td>{status_badge}</td>
+                        <td>
+                            {self._format_ports(ports)}
+                        </td>
                         <td>
                             {edit_button}
                         </td>
@@ -1211,9 +1329,13 @@ class WebUIHandler(BaseHTTPRequestHandler):
                             self.hosts_file._add_preallocated_ip(ip)
                             status = "Added"
                         
+                        # Get the open ports from the device info
+                        ports = device_info.get('ports', [])
+                        
                         self.scan_results[ip] = {
                             'mac': mac or 'Unknown',
-                            'status': status
+                            'status': status,
+                            'ports': ports
                         }
                     
                     # Update the hosts file on disk

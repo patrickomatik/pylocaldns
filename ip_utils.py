@@ -224,19 +224,22 @@ def get_arp_output(ip_address: str) -> Optional[str]:
         return None
 
 
-def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Optional[str]]:
+def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Dict[str, Any]]:
     """
     Scan a range of IP addresses asynchronously to find devices.
     
-    This function performs a quick network scan to find active devices
-    and retrieve their MAC addresses. It uses multiple threads for speed.
+    This function performs a quick network scan to find active devices,
+    retrieve their MAC addresses, and check for open ports.
+    It uses multiple threads for speed.
     
     Args:
         ip_range: Tuple with start and end IP addresses
         callback: Optional progress callback function
         
     Returns:
-        Dictionary mapping IP addresses to MAC addresses (or None if MAC not found)
+        Dictionary mapping IP addresses to dictionaries containing:
+        - 'mac': MAC address (or None if not found)
+        - 'ports': List of open ports
     """
     from ipaddress import IPv4Address
     
@@ -248,7 +251,7 @@ def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Op
     total_ips = end_int - start_int + 1
     
     # Results dictionary
-    results: Dict[str, Optional[str]] = {}
+    results: Dict[str, Dict[str, Any]] = {}
     results_lock = threading.Lock()
     
     # Keep track of progress
@@ -262,8 +265,15 @@ def scan_network_async(ip_range: Tuple[str, str], callback=None) -> Dict[str, Op
         if is_ip_in_use(ip, timeout=0.5):
             # Try to get MAC address
             mac = get_mac_from_arp(ip)
+            
+            # Scan for open ports
+            open_ports = scan_client_ports(ip, COMMON_PORTS)
+            
             with results_lock:
-                results[ip] = mac
+                results[ip] = {
+                    'mac': mac,
+                    'ports': open_ports
+                }
         
         # Update progress
         with progress_lock:
