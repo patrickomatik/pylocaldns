@@ -436,6 +436,20 @@ class HostsFile:
         # Perform the scan
         discovered = ip_utils.scan_network_async(self.dhcp_range, callback=progress_callback)
         
+        # Check if we need to perform deeper port scanning
+        do_port_scan = True  # Always perform port scanning for better device identification
+        
+        # Perform more detailed port scanning if requested
+        if do_port_scan:
+            logger.info("Performing detailed port scanning for discovered devices...")
+            for ip, device_info in discovered.items():
+                # Check for open ports (more extensive list for better identification)
+                logger.debug(f"Scanning common ports on {ip}...")
+                open_ports = ip_utils.scan_client_ports(ip)
+                if open_ports:
+                    device_info['ports'] = sorted(open_ports)  # Store open ports in device info
+                    logger.info(f"Device at {ip} has open ports: {', '.join(map(str, open_ports))}")
+        
         # Update our configuration with discovered devices
         for ip, device_info in discovered.items():
             if ip not in self.reserved_ips and ip not in [lease.ip_address for lease in self.leases.values()]:

@@ -23,7 +23,32 @@ logging.basicConfig(
 logger = logging.getLogger('ip_utils')
 
 # Common ports to check for active devices
-COMMON_PORTS = [80, 443, 22, 445, 139, 135, 21, 23, 25, 587, 3389, 5900, 8080, 8443]
+COMMON_PORTS = [
+    # Web servers
+    80, 443, 8080, 8443, 8000, 8081, 8181, 3000, 
+    # Remote access
+    22, 23, 3389, 5900, 5901, 5800,
+    # Windows services
+    445, 139, 135, 389, 636,
+    # Email and messaging
+    25, 587, 465, 110, 143, 993, 995,
+    # File transfer
+    21, 115, 990, 989,
+    # Databases
+    1433, 3306, 5432, 6379, 27017, 9200,
+    # IoT and smart home
+    1883, 8883, 5683, 5684,
+    # Media streaming
+    8096, 32400, 8123, 554,
+    # Print services
+    631, 515, 9100,
+    # Network services
+    53, 67, 68, 123, 161, 162, 1900, 5353,
+    # VPN and routing
+    500, 4500, 1194, 51820, 1701, 1723,
+    # Game servers
+    25565, 27015, 7777
+]
 
 
 def is_ip_in_use(ip_address: str, timeout: float = 1.0) -> bool:
