@@ -220,9 +220,11 @@ class HostsFile:
                     
                 # IP is in use by another device - mark it as pre-allocated
                 logger.warning(f"IP {ip_address} is already in use on network but not in our system")
+                # Add as pre-allocated and remove from available pool
                 self._add_preallocated_ip(ip_address)
-                # Remove it from available pool
-                self.available_ips.discard(ip_address)
+                # Ensure it's removed from available pool
+                if ip_address in self.available_ips:
+                    self.available_ips.remove(ip_address)
             else:
                 # IP is not in use, so we can allocate it
                 logger.info(f"Allocated new IP {ip_address} for MAC {mac_address}")
@@ -238,6 +240,11 @@ class HostsFile:
         """
         # Add to reserved IPs
         self.reserved_ips.add(ip_address)
+        
+        # Remove from available IPs if it's in our DHCP range
+        if ip_address in self.available_ips:
+            self.available_ips.remove(ip_address)
+            logger.debug(f"Removed {ip_address} from available DHCP pool (pre-allocated)")
 
         # Try to get MAC address from ARP table
         mac_address = ip_utils.get_mac_from_arp(ip_address)

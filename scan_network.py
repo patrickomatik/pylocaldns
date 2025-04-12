@@ -122,7 +122,10 @@ def scan_network(hosts_file_path: str, ip_range: Optional[Tuple[str, str]] = Non
         def progress_callback(scanned, total):
             if scanned % 10 == 0 or scanned == total:
                 percent = scanned / total * 100
-                print(f"\rProgress: {scanned}/{total} IPs ({percent:.1f}%)   ", end="", flush=True)
+                time_elapsed = time.time() - start_time
+                ips_per_second = scanned / time_elapsed if time_elapsed > 0 else 0
+                time_remaining = (total - scanned) / ips_per_second if ips_per_second > 0 else 0
+                print(f"\rProgress: {scanned}/{total} IPs ({percent:.1f}%) - {ips_per_second:.1f} IPs/sec - {time_remaining:.0f}s remaining   ", end="", flush=True)
         
         # Perform the scan
         start_time = time.time()

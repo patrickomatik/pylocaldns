@@ -60,6 +60,12 @@ def is_ip_in_use(ip_address: str, timeout: float = 1.0) -> bool:
     if scan_ports(ip_address, COMMON_PORTS, timeout/2):
         return True
     
+    # Final check: if we can get a MAC address for this IP from any source,
+    # then it's likely in use even if it doesn't respond to our other checks
+    if get_mac_from_arp(ip_address) is not None:
+        logger.debug(f"IP {ip_address} has a MAC address in the system")
+        return True
+    
     return False
 
 
@@ -174,6 +180,7 @@ def get_mac_from_arp(ip_address: str) -> Optional[str]:
                     # Look for a MAC address pattern in the line
                     parts = line.split()
                     for part in parts:
+                        # Look for word that's a MAC address format
                         if re.match(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$', part):
                             return part.lower()
         elif sys.platform == 'win32':  # Windows
@@ -183,8 +190,9 @@ def get_mac_from_arp(ip_address: str) -> Optional[str]:
             if match:
                 # Convert Windows format (00-11-22-33-44-55) to standard (00:11:22:33:44:55)
                 return match.group(1).replace('-', ':').lower()
-    except:
-        pass  # If ARP check fails, return None
+    except Exception as e:
+        logger.debug(f"Error getting MAC from ARP for {ip_address}: {e}")
+        return None  # If ARP check fails, return None
     
     return None
 

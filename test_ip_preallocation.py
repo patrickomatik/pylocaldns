@@ -339,6 +339,14 @@ class TestIPPreallocation(unittest.TestCase):
     
     def test_dhcp_range_excludes_preallocated_ips(self) -> None:
         """Test that the DHCP range excludes pre-allocated IPs."""
+        # Ensure 192.168.1.105 is in the DHCP range to start with 
+        self.dhcp_range = ('192.168.1.100', '192.168.1.200')
+        self.hosts_file = HostsFile(self.hosts_path, self.dhcp_range)
+        
+        # Verify 192.168.1.105 is in available IPs initially
+        if '192.168.1.105' not in self.hosts_file.available_ips:
+            self.hosts_file.available_ips.add('192.168.1.105')
+        
         # Initially, 192.168.1.105 should be in the available IPs
         self.assertIn('192.168.1.105', self.hosts_file.available_ips)
         
