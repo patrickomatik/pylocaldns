@@ -1,3 +1,42 @@
+## Advanced Features
+
+### IP Address Usage Checking
+
+The DHCP server includes a comprehensive IP address usage verification system that prevents address conflicts. Before allocating an IP address, the server checks if it's already in use on the network using multiple methods:
+
+- **Ping Tests**: Sends ICMP pings to check for live devices
+- **Port Scanning**: Checks common network ports for services
+- **ARP Table Analysis**: Examines the system's ARP cache
+
+If an IP address is found to be in use but not in our configuration, it's automatically marked as "pre-allocated" and removed from the DHCP pool. This prevents IP conflicts and ensures a stable network.
+
+### Network Discovery
+
+The server includes a network scanner that can discover all devices on your network:
+
+```bash
+# Scan your network and update the hosts file
+python scan_network.py --hosts-file /path/to/hosts.txt
+
+# Scan a specific IP range
+python scan_network.py --hosts-file /path/to/hosts.txt --range 192.168.1.100-192.168.1.200
+```
+
+This is useful for:
+- Setting up on an existing network with many devices
+- Discovering unknown devices on your network
+- Preventing IP conflicts before they happen
+
+### Smart Client Handling
+
+The DHCP server has intelligent handling for device requests:
+
+- If a device is requesting its own current IP, the server will allow it
+- If a device has changed its MAC address but is requesting the same IP, the server will update its records
+- If a device is requesting an IP that's already in use by another device, the server will assign a different IP
+
+This makes the server resilient to network changes and prevents disruptions.
+
 # Network Server (DNS + DHCP)
 
 A lightweight Python server that provides both DNS and DHCP services using a shared configuration file. The server resolves domain names and assigns IP addresses based on MAC addresses from a local hosts file.

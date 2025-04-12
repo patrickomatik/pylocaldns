@@ -18,6 +18,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Optional, Set, Any
 
 from models import DNSRecord, DHCPLease, DNS_QUERY_TYPE_A, DNS_QUERY_TYPE_AAAA, DEFAULT_LEASE_TIME
+import ip_utils  # Import the new IP utilities module
 
 # Setup logging
 logging.basicConfig(
@@ -207,142 +208,27 @@ class HostsFile:
 
         # Check each IP to see if it's in use on the network
         for ip_address in sorted_ips:
-            if not self._is_ip_in_use(ip_address):
-                logger.info(f"Allocated new IP {ip_address} for MAC {mac_address}")
-                return ip_address
-            else:
-                # IP is in use but not in our system - mark it as pre-allocated
+            # First, check if this IP is being requested by the device that already has it
+            # This handles the case where a device is requesting its own IP
+            if ip_utils.is_ip_in_use(ip_address):
+                current_mac = ip_utils.get_mac_from_arp(ip_address)
+                
+                # If the device requesting the IP is the same one that has it, allow the allocation
+                if current_mac and current_mac.lower() == mac_address:
+                    logger.info(f"Device with MAC {mac_address} is requesting its existing IP {ip_address}")
+                    return ip_address
+                    
+                # IP is in use by another device - mark it as pre-allocated
                 logger.warning(f"IP {ip_address} is already in use on network but not in our system")
                 self._add_preallocated_ip(ip_address)
                 # Remove it from available pool
                 self.available_ips.discard(ip_address)
+            else:
+                # IP is not in use, so we can allocate it
+                logger.info(f"Allocated new IP {ip_address} for MAC {mac_address}")
+                return ip_address
 
         logger.warning(f"All available IPs are currently in use on the network")
-        return None
-
-    def _is_ip_in_use(self, ip_address: str) -> bool:
-        """
-        Check if an IP address is already in use on the network.
-        Returns True if the IP is in use, False otherwise.
-        """
-        # Common ports to check - add more as needed
-        common_ports = [80, 443, 22, 445, 139, 135, 21, 23, 25, 587, 3389, 5900]
-
-        # Only check local network IPs (skip the local machine)
-        if ip_address.startswith('127.'):
-            return False
-
-        # Use ping to see if device responds
-        try:
-            # Use ping with a short timeout
-            result = subprocess.run(
-                ["ping", "-c", "1", "-W", "1", ip_address],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=2
-            )
-            if result.returncode == 0:
-                logger.debug(f"IP {ip_address} responded to ping")
-                return True
-        except (subprocess.SubprocessError, subprocess.TimeoutExpired):
-            pass  # Ping failed, continue with port checks
-
-        # Try connecting to common ports with a very short timeout
-        for port in common_ports:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(0.2)  # Very short timeout
-                result = s.connect_ex((ip_address, port))
-                s.close()
-
-                if result == 0:  # Port is open
-                    logger.debug(f"IP {ip_address} has open port {port}")
-                    return True
-            except:
-                pass
-
-        # Additional check using ARP tables (works on Linux and macOS)
-        try:
-            # Try to get the MAC address from the ARP table
-            if sys.platform in ['linux', 'darwin']:  # Linux or macOS
-                result = subprocess.run(
-                    ["arp", "-n", ip_address],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=1
-                )
-                # Check if we got a MAC address (not an incomplete entry)
-                arp_output = result.stdout.decode('utf-8')
-                if ip_address in arp_output and "incomplete" not in arp_output.lower() and "no match" not in arp_output.lower():
-                    if "(" not in arp_output:  # Valid MAC found
-                        logger.debug(f"IP {ip_address} found in ARP cache with valid MAC")
-                        return True
-            elif sys.platform == 'win32':  # Windows
-                result = subprocess.run(
-                    ["arp", "-a", ip_address],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=1
-                )
-                arp_output = result.stdout.decode('utf-8')
-                if ip_address in arp_output and "no arp entry" not in arp_output.lower():
-                    logger.debug(f"IP {ip_address} found in Windows ARP cache")
-                    return True
-        except:
-            pass  # If ARP check fails, continue
-
-        return False
-
-    def _get_mac_from_arp(self, ip_address: str) -> Optional[str]:
-        """
-        Try to get the MAC address from the ARP table for a given IP.
-        Returns the MAC address if found, None otherwise.
-        """
-        try:
-            if sys.platform in ['linux', 'darwin']:  # Linux or macOS
-                result = subprocess.run(
-                    ["arp", "-n", ip_address],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=1
-                )
-                output = result.stdout.decode('utf-8')
-
-                # Parse the output for MAC address
-                if ip_address in output and result.returncode == 0:
-                    # Extract MAC from output (format varies by OS)
-                    lines = output.strip().split('\n')
-                    for line in lines:
-                        if ip_address in line:
-                            # Try different approaches to extract MAC
-                            # Linux format: IP_ADDRESS ether MAC_ADDRESS ...
-                            parts = line.split()
-                            for i, part in enumerate(parts):
-                                # Look for word that's a MAC address format
-                                if re.match(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$', part):
-                                    return part.lower()
-            elif sys.platform == 'win32':  # Windows
-                result = subprocess.run(
-                    ["arp", "-a", ip_address],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=1
-                )
-                output = result.stdout.decode('utf-8')
-
-                # Parse the output for MAC address
-                if ip_address in output and result.returncode == 0:
-                    # Windows format: Internet Address Physical Address Type
-                    pattern = re.compile(rf'\s*{re.escape(ip_address)}\s+([0-9a-f-]+)\s+')
-                    match = pattern.search(output)
-                    if match:
-                        # Convert from Windows format (00-11-22-33-44-55) to
-                        # standard format (00:11:22:33:44:55)
-                        return match.group(1).replace('-', ':').lower()
-
-        except (subprocess.SubprocessError, UnicodeDecodeError):
-            pass  # If ARP check fails, continue
-
         return None
 
     def _add_preallocated_ip(self, ip_address: str) -> None:
@@ -354,26 +240,27 @@ class HostsFile:
         self.reserved_ips.add(ip_address)
 
         # Try to get MAC address from ARP table
-        mac_address = self._get_mac_from_arp(ip_address)
+        mac_address = ip_utils.get_mac_from_arp(ip_address)
         hostname = f"device-{ip_address.replace('.', '-')}"
 
         if mac_address:
             # Add to static mappings with discovered MAC
             logger.info(f"Adding pre-allocated IP {ip_address} with MAC {mac_address} to configuration")
             self.mac_to_ip[mac_address] = ip_address
-            self.ip_to_hostnames[ip_address] = [hostname]
+            self.ip_to_hostnames[ip_address] = [hostname, "preallocated"]
 
             # Create DNS records
-            record_type = 1  # IPv4
+            record_type = DNS_QUERY_TYPE_A  # IPv4
             dns_record = DNSRecord(ip_address, record_type)
             self.dns_records[hostname.lower()].append(dns_record)
+            self.dns_records["preallocated"].append(dns_record)
         else:
             # Just add the IP as a hostname mapping if we can't find MAC
             logger.info(f"Adding pre-allocated IP {ip_address} to configuration (MAC unknown)")
             self.ip_to_hostnames[ip_address] = [hostname, "preallocated"]
 
             # Create DNS records
-            record_type = 1  # IPv4
+            record_type = DNS_QUERY_TYPE_A  # IPv4
             dns_record = DNSRecord(ip_address, record_type)
             self.dns_records[hostname.lower()].append(dns_record)
             self.dns_records["preallocated"].append(dns_record)
@@ -456,6 +343,14 @@ class HostsFile:
                             lease_time: int = DEFAULT_LEASE_TIME) -> DHCPLease:
         """Add or update a DHCP lease."""
         mac_address = mac_address.lower()
+        
+        # Check if the IP address is already in use by another device
+        if ip_utils.is_ip_in_use(ip_address):
+            current_mac = ip_utils.get_mac_from_arp(ip_address)
+            if current_mac and current_mac.lower() != mac_address:
+                logger.warning(f"IP {ip_address} is already in use by device with MAC {current_mac}, "
+                              f"but being requested by {mac_address}")
+        
         lease = DHCPLease(mac_address, ip_address, hostname, lease_time)
         self.leases[mac_address] = lease
         logger.info(f"Added/updated lease: {lease}")
@@ -488,3 +383,37 @@ class HostsFile:
 
         if expired:
             logger.info(f"Cleaned up {len(expired)} expired leases")
+            
+    def scan_network(self) -> Dict[str, Optional[str]]:
+        """
+        Scan the network for active devices and update the configuration.
+        
+        This is useful for discovering devices on the network that aren't
+        already in our configuration. It helps build a more complete picture
+        of the network.
+        
+        Returns:
+            Dictionary mapping IP addresses to MAC addresses for discovered devices
+        """
+        if not self.dhcp_range:
+            logger.warning("Cannot scan network without DHCP range configured")
+            return {}
+            
+        logger.info(f"Scanning network range {self.dhcp_range[0]} to {self.dhcp_range[1]}")
+        
+        # Define a simple progress callback
+        def progress_callback(scanned, total):
+            if scanned % 20 == 0 or scanned == total:
+                logger.info(f"Network scan progress: {scanned}/{total} IPs ({scanned/total*100:.1f}%)")
+        
+        # Perform the scan
+        discovered = ip_utils.scan_network_async(self.dhcp_range, callback=progress_callback)
+        
+        # Update our configuration with discovered devices
+        for ip, mac in discovered.items():
+            if ip not in self.reserved_ips and ip not in [lease.ip_address for lease in self.leases.values()]:
+                logger.info(f"Discovered new device at {ip}" + (f" with MAC {mac}" if mac else ""))
+                self._add_preallocated_ip(ip)
+        
+        logger.info(f"Network scan complete. Discovered {len(discovered)} active devices.")
+        return discovered

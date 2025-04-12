@@ -21,6 +21,7 @@ from models import (DHCPLease, DHCP_SERVER_PORT, DHCP_CLIENT_PORT, DHCP_MAGIC_CO
                    DHCP_OPT_MSG_TYPE, DHCP_OPT_SERVER_ID, DHCP_OPT_PARAM_REQ_LIST,
                    DHCP_OPT_END)
 from hosts_file import HostsFile
+import ip_utils  # Import the IP utilities
 
 # Setup logging
 logging.basicConfig(
@@ -359,6 +360,20 @@ class DHCPServer:
                 # Client is requesting a different IP than its current lease
                 logger.warning(
                     f"Client {mac_address} requested {requested_ip} but has lease for {existing_lease.ip_address}")
+                
+                # Before sending NAK, check if the client is actually using the requested IP
+                # This handles cases where a device's lease expired but it's still using the same IP
+                if ip_utils.is_ip_in_use(requested_ip):
+                    current_mac = ip_utils.get_mac_from_arp(requested_ip)
+                    if current_mac and current_mac.lower() == mac_address:
+                        logger.info(f"Client {mac_address} is requesting IP {requested_ip} that it's already using")
+                        # Allow the device to keep using this IP
+                        self.hosts.add_or_update_lease(mac_address, requested_ip, hostname, self.lease_time)
+                        ack_packet = self.create_dhcp_ack(request, requested_ip)
+                        self.sock.sendto(ack_packet, ('255.255.255.255', DHCP_CLIENT_PORT))
+                        return
+                
+                # If we get here, it's not a valid request
                 nak_packet = self.create_dhcp_nak(request)
                 self.sock.sendto(nak_packet, ('255.255.255.255', DHCP_CLIENT_PORT))
                 return
@@ -366,6 +381,21 @@ class DHCPServer:
             # If no existing lease, check if the IP is in the available pool
             if not existing_lease and requested_ip not in self.hosts.available_ips:
                 logger.warning(f"Client {mac_address} requested unavailable IP {requested_ip}")
+                
+                # Check if the client is already using this IP (edge case)
+                if ip_utils.is_ip_in_use(requested_ip):
+                    current_mac = ip_utils.get_mac_from_arp(requested_ip)
+                    if current_mac and current_mac.lower() == mac_address:
+                        logger.info(f"Client {mac_address} is requesting IP {requested_ip} that it's already using")
+                        # Add it as pre-allocated
+                        self.hosts._add_preallocated_ip(requested_ip)
+                        # Create a lease for it
+                        self.hosts.add_or_update_lease(mac_address, requested_ip, hostname, self.lease_time)
+                        ack_packet = self.create_dhcp_ack(request, requested_ip)
+                        self.sock.sendto(ack_packet, ('255.255.255.255', DHCP_CLIENT_PORT))
+                        return
+                
+                # If we get here, it's not a valid request
                 nak_packet = self.create_dhcp_nak(request)
                 self.sock.sendto(nak_packet, ('255.255.255.255', DHCP_CLIENT_PORT))
                 return

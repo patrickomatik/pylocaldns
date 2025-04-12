@@ -21,6 +21,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 import socket
 import re
+import ip_utils
 
 # Setup logging
 logger = logging.getLogger('webui')
@@ -93,6 +94,10 @@ HTML_HEADER = """<!DOCTYPE html>
             background-color: #5bc0de;
             margin-bottom: 20px;
         }
+        .btn-scan {
+            background-color: #f0ad4e;
+            margin-bottom: 20px;
+        }
         form {
             background: #f9f9f9;
             padding: 20px;
@@ -160,6 +165,29 @@ HTML_HEADER = """<!DOCTYPE html>
             font-size: 0.8em;
             color: #777;
         }
+        .badge {
+            display: inline-block;
+            min-width: 10px;
+            padding: 3px 7px;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            color: #fff;
+            text-align: center;
+            white-space: nowrap;
+            vertical-align: middle;
+            background-color: #777;
+            border-radius: 10px;
+        }
+        .badge-info {
+            background-color: #5bc0de;
+        }
+        .badge-warning {
+            background-color: #f0ad4e;
+        }
+        .badge-success {
+            background-color: #5cb85c;
+        }
     </style>
 </head>
 <body>
@@ -167,6 +195,7 @@ HTML_HEADER = """<!DOCTYPE html>
         <div class="nav">
             <a href="/" class="active">Dashboard</a>
             <a href="/add">Add New Entry</a>
+            <a href="/scan">Scan Network</a>
             <a href="/settings">Settings</a>
         </div>
 """
