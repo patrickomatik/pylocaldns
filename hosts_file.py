@@ -206,30 +206,33 @@ class HostsFile:
         # Sort available IPs for deterministic allocation and easier testing
         sorted_ips = sorted(list(available), key=lambda ip: [int(octet) for octet in ip.split('.')])
 
-        # Check each IP to see if it's in use on the network
-        for ip_address in sorted_ips:
-            # First, check if this IP is being requested by the device that already has it
-            # This handles the case where a device is requesting its own IP
+        # Pre-check: scan all IPs for usage and pre-allocate any that are already in use
+        # This is crucial for handling network devices not in our system
+        for ip_address in sorted_ips.copy():  # Use a copy to avoid modifying during iteration
             if ip_utils.is_ip_in_use(ip_address):
                 current_mac = ip_utils.get_mac_from_arp(ip_address)
                 
                 # If the device requesting the IP is the same one that has it, allow the allocation
                 if current_mac and current_mac.lower() == mac_address:
                     logger.info(f"Device with MAC {mac_address} is requesting its existing IP {ip_address}")
+                    # Add it as a static reservation to prevent reassignment
+                    self.mac_to_ip[mac_address] = ip_address
                     return ip_address
                     
-                # IP is in use by another device - mark it as pre-allocated
-                logger.warning(f"IP {ip_address} is already in use on network but not in our system")
-                # Add as pre-allocated and remove from available pool
+                logger.warning(f"IP {ip_address} is already in use by another device (MAC: {current_mac or 'unknown'})")
                 self._add_preallocated_ip(ip_address)
-                # Ensure it's removed from available pool
-                if ip_address in self.available_ips:
-                    self.available_ips.remove(ip_address)
-            else:
-                # IP is not in use, so we can allocate it
-                logger.info(f"Allocated new IP {ip_address} for MAC {mac_address}")
-                return ip_address
-
+        
+        # Recalculate available IPs - pre-allocated IPs should now be in reserved_ips
+        available = self.available_ips - self.reserved_ips - leased_ips
+        sorted_ips = sorted(list(available), key=lambda ip: [int(octet) for octet in ip.split('.')])
+        
+        # Now we can safely allocate from the remaining IPs
+        if sorted_ips:
+            # Allocate the first available IP that's not in use
+            ip_address = sorted_ips[0]
+            logger.info(f"Allocated new IP {ip_address} for MAC {mac_address}")
+            return ip_address
+            
         logger.warning(f"All available IPs are currently in use on the network")
         return None
 
@@ -242,8 +245,8 @@ class HostsFile:
         self.reserved_ips.add(ip_address)
         
         # Remove from available IPs if it's in our DHCP range
-        if ip_address in self.available_ips:
-            self.available_ips.remove(ip_address)
+        if hasattr(self, 'available_ips'):
+            self.available_ips.discard(ip_address)
             logger.debug(f"Removed {ip_address} from available DHCP pool (pre-allocated)")
 
         # Try to get MAC address from ARP table
