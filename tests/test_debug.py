@@ -8,6 +8,10 @@ without using the full unittest framework.
 
 import os
 import tempfile
+import sys
+# Add parent directory to the path so we can import the necessary modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import ip_utils
 from hosts_file import HostsFile
 

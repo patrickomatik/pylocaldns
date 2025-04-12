@@ -15,10 +15,14 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 import threading
 import time
 from typing import List
+
+# Import API server
+from api_server import APIServer
 
 # Import local modules
 from models import DEFAULT_LEASE_TIME
@@ -42,7 +46,8 @@ class NetworkServer:
                  interface: str = '0.0.0.0', dhcp_enable: bool = False,
                  subnet_mask: str = '255.255.255.0', router: str = None,
                  dns_servers: List[str] = None, webui_enable: bool = False,
-                 webui_port: int = 8080):
+                 webui_port: int = 8080, api_enable: bool = False,
+                 api_port: int = 8081, api_token: str = None):
         self.hosts = hosts_file
         self.interface = interface
         self.dns_server = DNSServer(hosts_file, dns_port, interface)
@@ -65,6 +70,21 @@ class NetworkServer:
         self.webui_port = webui_port
         self.webui_server = None
         self.actual_webui_port = None
+
+        # API server
+        self.api_enable = api_enable
+        self.api_port = api_port
+        self.api_token = api_token
+        self.api_server = None
+        self.actual_api_port = None
+
+        if api_enable:
+            self.api_server = APIServer(
+                hosts_file,
+                port=api_port,
+                interface=interface,
+                auth_token=api_token
+            )
 
         if webui_enable:
             try:
@@ -118,6 +138,32 @@ class NetworkServer:
                 logger.error(f"Failed to start Web UI: {e}")
                 logger.info("Continuing without Web UI...")
                 self.webui_enable = False
+                
+        # Start the API server if enabled
+        api_thread = None
+        if self.api_enable and self.api_server:
+            try:
+                api_thread = self.api_server.start()
+                self.actual_api_port = self.api_server.port  # Store the actual port being used
+                
+                # Get local IP addresses to display more useful URLs
+                local_ips = get_local_ips()
+                
+                # Display URLs for different interfaces
+                logger.info(f"API server available at:")
+                logger.info(f"  - http://localhost:{self.actual_api_port}/api/")
+                for ip in local_ips:
+                    logger.info(f"  - http://{ip}:{self.actual_api_port}/api/")
+                    
+                # Display usage example with the DNS client
+                script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'set_dns_entry.sh')
+                logger.info(f"To set DNS entries, use:")
+                logger.info(f"  {script_path} --server http://localhost:{self.actual_api_port}")
+                
+            except Exception as e:
+                logger.error(f"Failed to start API server: {e}")
+                logger.info("Continuing without API server...")
+                self.api_enable = False
 
         # Start a thread to monitor the hosts file for changes
         monitor_thread = threading.Thread(
@@ -143,6 +189,9 @@ class NetworkServer:
 
         if self.webui_enable and self.webui_server:
             self.webui_server.stop()
+            
+        if self.api_enable and self.api_server:
+            self.api_server.stop()
 
     def _file_monitoring_thread(self) -> None:
         """Thread function to periodically check for hosts file updates."""
@@ -177,6 +226,11 @@ def main() -> None:
     # Web UI arguments
     parser.add_argument('--webui-enable', action='store_true', help='Enable web UI for management')
     parser.add_argument('--webui-port', type=int, default=8080, help='Web UI port (default: 8080)')
+    
+    # API server arguments
+    parser.add_argument('--api-enable', action='store_true', help='Enable API server for remote management')
+    parser.add_argument('--api-port', type=int, default=8081, help='API server port (default: 8081)')
+    parser.add_argument('--api-token', help='API authentication token (optional)')
 
     args = parser.parse_args()
 
@@ -211,7 +265,10 @@ def main() -> None:
             router=args.dhcp_router,
             dns_servers=dns_servers,
             webui_enable=args.webui_enable,
-            webui_port=args.webui_port
+            webui_port=args.webui_port,
+            api_enable=args.api_enable,
+            api_port=args.api_port,
+            api_token=args.api_token
         )
 
         logger.info("Starting network services...")

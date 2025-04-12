@@ -6,6 +6,10 @@ Simple focused test for the preallocation issue
 import unittest
 import tempfile
 import os
+import sys
+# Add parent directory to the path so we can import the necessary modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import ip_utils
 from hosts_file import HostsFile
 

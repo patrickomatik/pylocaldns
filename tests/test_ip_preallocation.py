@@ -16,6 +16,9 @@ import subprocess
 import tempfile
 from typing import Dict, List, Optional, Tuple
 
+# Add parent directory to the path so we can import the necessary modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -24,7 +27,6 @@ logging.basicConfig(
 logger = logging.getLogger('test_ip_preallocation')
 
 # Import local modules
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from models import DNSRecord, DHCPLease, DNS_QUERY_TYPE_A
 from hosts_file import HostsFile
 import ip_utils

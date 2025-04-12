@@ -37,6 +37,22 @@ The DHCP server has intelligent handling for device requests:
 
 This makes the server resilient to network changes and prevents disruptions.
 
+### Remote DNS Management API
+
+The server includes a simple HTTP API that allows devices to:
+
+- Register themselves with the DNS server
+- Update their hostname and IP mappings
+- Lookup DNS records
+- Perform reverse lookups
+
+This feature is perfect for:
+- Automatically registering devices on your network
+- Dynamic DNS updates from remote hosts
+- Integrating with scripts and automation tools
+
+See the [API Documentation](api_readme.md) for details.
+
 # Network Server (DNS + DHCP)
 
 A lightweight Python server that provides both DNS and DHCP services using a shared configuration file. The server resolves domain names and assigns IP addresses based on MAC addresses from a local hosts file.
@@ -47,6 +63,7 @@ A lightweight Python server that provides both DNS and DHCP services using a sha
   - Resolves domain names using a local hosts file
   - Supports both IPv4 (A records) and IPv6 (AAAA records)
   - Acts as an authoritative DNS server for configured domains
+  - Remote API for DNS record management
 
 - **DHCP Service**:
   - Assigns IP addresses to clients based on MAC address
@@ -61,6 +78,14 @@ A lightweight Python server that provides both DNS and DHCP services using a sha
   - Add and edit DNS entries for devices
   - Convert dynamic DHCP leases to static entries
   - Manage DHCP leases
+
+- **DNS API**:
+  - HTTP-based API for remote DNS management
+  - Set hostname for an IP address
+  - Look up IP addresses for a hostname
+  - Reverse lookup hostname for an IP
+  - Get a list of all DNS records
+  - Optional authentication
 
 - **Common Features**:
   - Single configuration file for both services
@@ -101,6 +126,9 @@ sudo python network_server.py --hosts-file /path/to/hosts.txt --dhcp-enable --dh
 
 # Run with Web UI
 sudo python network_server.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 --webui-enable
+
+# Enable the DNS API
+sudo python network_server.py --hosts-file /path/to/hosts.txt --api-enable
 ```
 
 The server requires root privileges if you're using the standard DNS (53) and DHCP (67/68) ports.
@@ -127,6 +155,11 @@ The server requires root privileges if you're using the standard DNS (53) and DH
 # Web UI options
 --webui-enable        Enable web UI for management
 --webui-port PORT     Web UI port (default: 8080)
+
+# API options
+--api-enable          Enable API server for remote management
+--api-port PORT       API server port (default: 8081)
+--api-token TOKEN     API authentication token (optional)
 ```
 
 ### Web UI
@@ -144,16 +177,32 @@ The Web UI provides:
 - Ability to edit/update hostname information
 - Convert dynamic leases to static entries
 
+### DNS API
+
+When enabled, the DNS API is accessible at:
+
+```
+http://<server-ip>:8081/api/
+```
+
+API endpoints:
+- `GET /api/dns/records` - Get all DNS records
+- `GET /api/dns/lookup?hostname=<hostname>` - Look up a hostname
+- `GET /api/dns/reverse?ip=<ip>` - Perform a reverse lookup
+- `POST /api/dns/set_hostname` - Set a hostname for an IP
+
+See the [API Documentation](api_readme.md) for more details and example usage.
+
 ### Example
 
 ```bash
 # Run on non-privileged ports for testing (requires root on Linux for ports <1024)
 python network_server.py --hosts-file ./hosts.txt --dns-port 5353 --interface 127.0.0.1
 
-# Run as a full network server with DHCP and Web UI
+# Run as a full network server with DHCP, Web UI, and API
 sudo python network_server.py --hosts-file /etc/custom_hosts \
   --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 \
-  --dhcp-router 192.168.1.1 --webui-enable --webui-port 8080
+  --dhcp-router 192.168.1.1 --webui-enable --api-enable
 ```
 
 ## Hosts File Format
@@ -213,6 +262,28 @@ For monitoring DHCP traffic, you can use tools like:
 - `tcpdump -i <interface> port 67 or port 68`
 - Wireshark with a DHCP filter
 
+### Testing the API
+
+The project includes a test script to verify API functionality:
+
+```bash
+# Start the server with API enabled
+sudo python network_server.py --hosts-file ./hosts.txt --api-enable
+
+# Run the test script
+./test_api.sh
+```
+
+You can also manually test with the client scripts:
+
+```bash
+# Set hostname using Python client
+./dns_api_client.py --server http://localhost:8081 set --hostname mydevice.local
+
+# Or using the curl client
+./set_dns_curl.sh --server http://localhost:8081 --hostname mydevice.local
+```
+
 ## Integration with System
 
 ### Running as a Service (Systemd on Linux)
@@ -225,7 +296,7 @@ Description=Network Server (DNS + DHCP)
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /path/to/network_server.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 --webui-enable
+ExecStart=/usr/bin/python3 /path/to/network_server.py --hosts-file /path/to/hosts.txt --dhcp-enable --dhcp-range 192.168.1.100-192.168.1.200 --webui-enable --api-enable
 Restart=on-failure
 User=root
 
@@ -239,6 +310,20 @@ Then enable and start the service:
 sudo systemctl enable network-server
 sudo systemctl start network-server
 ```
+
+### Setting Up Automatic DNS Updates
+
+You can create a cron job to automatically update your DNS entry:
+
+```bash
+# Edit your crontab
+crontab -e
+
+# Add a line to run the script every hour
+0 * * * * /path/to/set_dns_entry.sh --server http://server_address:8081
+```
+
+This is useful for devices with dynamic IP addresses that need to maintain a consistent hostname.
 
 ## Client Configuration
 
@@ -277,44 +362,12 @@ Most systems are configured to use DHCP by default. To ensure clients use your D
 - No DHCP relay support (clients must be on the same network segment)
 - Limited DHCP options support (basic network config only)
 - No IPv6 DHCP (DHCPv6) support
-- Basic authentication is not included in the Web UI
+- The DNS API does not use HTTPS by default
 
 ## Security Considerations
 
-- The Web UI has no authentication - should only be used on trusted networks
-- The server does not implement authentication or encryption for DNS/DHCP
-- Should only be used on trusted networks
-- Running as root/administrator is a security risk; consider using containers or least-privilege approaches
-
-## License
-
-MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-   - Go to the DNS tab and add your server IP
-
-### DHCP Client Configuration
-
-Most systems are configured to use DHCP by default. To ensure clients use your DHCP server:
-
-1. Make sure the DHCP server is the only one on your network segment
-2. Configure any existing routers/gateways to forward DHCP requests to your server
-
-## Limitations
-
-- DNS service is limited to A and AAAA record types
-- No recursive DNS resolution (only resolves domains in the hosts file)
-- No DNS caching (each query checks the hosts file)
-- No DHCP relay support (clients must be on the same network segment)
-- Limited DHCP options support (basic network config only)
-- No IPv6 DHCP (DHCPv6) support
-
-## Security Considerations
-
-- The server does not implement authentication or encryption
+- The Web UI and API have no authentication by default - use the `--api-token` option for API security
+- The server does not implement encryption for DNS/DHCP communications
 - Should only be used on trusted networks
 - Running as root/administrator is a security risk; consider using containers or least-privilege approaches
 
