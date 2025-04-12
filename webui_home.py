@@ -159,6 +159,7 @@ def render_dashboard_content_html(handler):
 
     # Get static entries from hosts file
     if handler.hosts_file:
+        # Get MAC-based entries
         for mac, ip in handler.hosts_file.mac_to_ip.items():
             hostnames = handler.hosts_file.get_hostnames_for_ip(ip)
             
@@ -172,7 +173,31 @@ def render_dashboard_content_html(handler):
                 'mac': mac,
                 'ip': ip,
                 'hostnames': ', '.join(display_hostnames) if display_hostnames else '-',
-                'ports': ports
+                'ports': ports,
+                'has_mac': True
+            }
+            
+            static_entries.append(entry)
+        
+        # Get DNS-only entries (no MAC address)
+        mac_ips = set(handler.hosts_file.mac_to_ip.values())
+        for ip, hostnames in handler.hosts_file.ip_to_hostnames.items():
+            # Skip if this IP is already covered by a MAC entry
+            if ip in mac_ips:
+                continue
+                
+            # Get port information
+            ports = get_ports_for_ip(handler, ip, hostnames, port_db)
+            
+            # Filter out port tags from display hostnames
+            display_hostnames = [h for h in hostnames if not h.startswith('ports-') and h != 'preallocated']
+            
+            entry = {
+                'mac': 'N/A',  # No MAC for DNS-only entries
+                'ip': ip,
+                'hostnames': ', '.join(display_hostnames) if display_hostnames else '-',
+                'ports': ports,
+                'has_mac': False
             }
             
             static_entries.append(entry)
@@ -225,18 +250,14 @@ def render_dashboard_content_html(handler):
             
             content += f"""
             <tr>
-                <td>{entry['mac']}{vendor_badge}</td>
+                <td>{entry['mac']}{vendor_badge if entry['has_mac'] else ''}{'' if entry['has_mac'] else ' <span class="badge badge-info">DNS Only</span>'}</td>
                 <td>{entry['ip']}</td>
                 <td>{entry['hostnames']}</td>
                 <td>{ports_display}</td>
                 <td>
                     <div class="btn-group">
-                        <a href="/edit?mac={entry['mac']}" class="btn btn-sm btn-edit">
-                            <i class="fas fa-edit"></i> Edit
-                        </a>
-                        <a href="/delete?mac={entry['mac']}" class="btn btn-sm btn-delete" onclick="return confirmDelete('{entry['mac']}')">
-                            <i class="fas fa-trash"></i> Delete
-                        </a>
+                        {f"<a href='/edit?mac={entry['mac']}' class='btn btn-sm btn-edit'><i class='fas fa-edit'></i> Edit</a>" if entry['has_mac'] else f"<a href='/edit?ip={entry['ip']}' class='btn btn-sm btn-edit'><i class='fas fa-edit'></i> Edit</a>"}
+                        {f"<a href='/delete?mac={entry['mac']}' class='btn btn-sm btn-delete' onclick='return confirmDelete(\"{entry['mac']}\")'><i class='fas fa-trash'></i> Delete</a>" if entry['has_mac'] else f"<a href='/delete?ip={entry['ip']}' class='btn btn-sm btn-delete' onclick='return confirmDelete(\"{entry['ip']}\")'><i class='fas fa-trash'></i> Delete</a>"}
                     </div>
                 </td>
             </tr>

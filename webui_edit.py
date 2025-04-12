@@ -41,8 +41,8 @@ def render_add_page_with_data(handler, mac="", ip="", hostnames="", errors=None)
     content += f"""
     <form method="post" action="/add">
         <div class="form-group">
-            <label for="mac">MAC Address:</label>
-            <input type="text" id="mac" name="mac" value="{mac}" placeholder="00:11:22:33:44:55" required>
+            <label for="mac">MAC Address (optional):</label>
+            <input type="text" id="mac" name="mac" value="{mac}" placeholder="00:11:22:33:44:55">
         </div>
         
         <div class="form-group">
@@ -75,15 +75,28 @@ def render_edit_page(handler):
     # Parse query parameters
     query = parse_qs(urlparse(handler.path).query)
     mac = query.get('mac', [''])[0]
+    ip = query.get('ip', [''])[0]
     
-    if not mac:
-        handler._send_redirect("/?message=MAC+address+is+required&type=error")
-        return
-    
+    # Check for necessary parameters
     if not handler.hosts_file:
         handler._send_redirect("/?message=Hosts+file+not+available&type=error")
         return
+    
+    # Handle IP-only edit (DNS-only entries)
+    if not mac and ip:
+        hostnames = handler.hosts_file.get_hostnames_for_ip(ip)
+        # Filter out port-related and preallocated hostnames for display
+        display_hostnames = ', '.join([h for h in hostnames if not h.startswith('ports-') and h != 'preallocated']) if hostnames else ''
         
+        content = render_edit_page_with_data(handler, '', ip, ip, display_hostnames)
+        handler._send_response(content.encode())
+        return
+    
+    # Handle MAC-based edit
+    if not mac:
+        handler._send_redirect("/?message=MAC+address+or+IP+address+is+required&type=error")
+        return
+    
     ip_address = handler.hosts_file.get_ip_for_mac(mac)
     if not ip_address:
         handler._send_redirect(f"/?message=No+entry+found+for+MAC:+{mac}&type=error")

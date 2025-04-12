@@ -41,8 +41,8 @@ def handle_add_request(handler):
     # Validate data
     errors = []
     
-    # Validate MAC address
-    if not re.match(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$', mac):
+    # Validate MAC address if provided
+    if mac and not re.match(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$', mac):
         errors.append("Invalid MAC address format. Please use format like 00:11:22:33:44:55.")
     
     # Validate IP address
@@ -53,7 +53,7 @@ def handle_add_request(handler):
         errors.append("Invalid IP address format. Please enter a valid IPv4 or IPv6 address.")
     
     # Check if MAC already exists
-    if handler.hosts_file and mac in handler.hosts_file.mac_to_ip:
+    if mac and handler.hosts_file and mac in handler.hosts_file.mac_to_ip:
         errors.append(f"An entry with MAC {mac} already exists.")
     
     if errors:
@@ -64,7 +64,10 @@ def handle_add_request(handler):
     
     # Add to hosts file
     if handler.hosts_file:
-        handler.hosts_file.mac_to_ip[mac] = ip
+        # Only add MAC-to-IP mapping if MAC is provided
+        if mac:
+            handler.hosts_file.mac_to_ip[mac] = ip
+            
         if hostnames:
             handler.hosts_file.ip_to_hostnames[ip] = hostnames
             
@@ -248,6 +251,32 @@ def handle_delete_request(handler):
             handler._send_redirect("/?message=Entry+deleted+successfully&type=success")
         else:
             handler._send_redirect(f"/?message=No+entry+found+for+MAC:+{mac}&type=error")
+    else:
+        handler._send_redirect("/?message=Hosts+file+not+available&type=error")
+
+
+def handle_delete_dns_entry(handler):
+    """Handle a request to delete a DNS-only entry."""
+    # Parse query parameters
+    query = parse_qs(urlparse(handler.path).query)
+    ip = query.get('ip', [''])[0]
+    
+    if not ip:
+        handler._send_redirect("/?message=IP+address+is+required&type=error")
+        return
+    
+    if handler.hosts_file:
+        # Try to delete the DNS entry
+        if handler.hosts_file.delete_dns_only_entry(ip):
+            handler._send_redirect("/?message=DNS+entry+deleted+successfully&type=success")
+        else:
+            # If deletion failed, provide error message
+            if ip not in handler.hosts_file.ip_to_hostnames:
+                handler._send_redirect(f"/?message=No+entry+found+for+IP:+{ip}&type=error")
+            elif any(ip == mac_ip for mac_ip in handler.hosts_file.mac_to_ip.values()):
+                handler._send_redirect(f"/?message=Cannot+delete+DNS+entry+for+IP+{ip}+because+it+is+associated+with+a+MAC+address&type=error")
+            else:
+                handler._send_redirect(f"/?message=Failed+to+delete+DNS+entry+for+IP:+{ip}&type=error")
     else:
         handler._send_redirect("/?message=Hosts+file+not+available&type=error")
 

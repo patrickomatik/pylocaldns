@@ -375,9 +375,10 @@ class HostsFile:
                 else:
                     entries.append(f"{ip} - [MAC={mac}]\n")
 
-            # Then add IP-only entries (like pre-allocated)
+            # Then add IP-only entries (DNS-only entries without MAC addresses)
             for ip, hostnames in self.ip_to_hostnames.items():
                 # Skip if this IP is already covered by a MAC entry
+                # This check is important to avoid duplicate entries
                 if any(ip == mac_ip for mac_ip in self.mac_to_ip.values()):
                     continue
 
@@ -434,6 +435,73 @@ class HostsFile:
         logger.info(f"Added/updated lease: {lease}")
         return lease
 
+    def add_dns_only_entry(self, ip_address: str, hostnames: List[str]) -> None:
+        """Add DNS records for an IP address without associating it with a MAC address.
+        
+        Args:
+            ip_address: The IP address for the DNS records
+            hostnames: List of hostnames to associate with the IP address
+        """
+        # Validate input
+        if not ip_address or not hostnames:
+            return
+            
+        # Add to the IP to hostnames mapping
+        self.ip_to_hostnames[ip_address] = hostnames
+        
+        # Create DNS records for each hostname
+        for hostname in hostnames:
+            # Determine if IPv4 or IPv6
+            if ':' in ip_address:  # IPv6
+                self.add_aaaa_record(hostname, ip_address)
+            else:  # IPv4
+                self.add_a_record(hostname, ip_address)
+                
+        # Update the hosts file
+        self._update_hosts_file()
+        logger.info(f"Added DNS-only entry for IP {ip_address} with hostnames: {', '.join(hostnames)}")
+        
+    def delete_dns_only_entry(self, ip_address: str) -> bool:
+        """Delete a DNS-only entry (IP without MAC address).
+        
+        Args:
+            ip_address: The IP address to delete
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        # Validate this is a DNS-only entry (not associated with a MAC)
+        if not ip_address or ip_address not in self.ip_to_hostnames:
+            return False
+            
+        # Check it's not associated with a MAC address
+        if any(ip_address == mac_ip for mac_ip in self.mac_to_ip.values()):
+            return False
+            
+        # Get hostnames to clean up DNS records
+        hostnames = self.ip_to_hostnames[ip_address]
+        
+        # Remove DNS records
+        for hostname in hostnames:
+            if hostname.lower() in self.dns_records:
+                # Filter out records for this IP
+                self.dns_records[hostname.lower()] = [
+                    record for record in self.dns_records[hostname.lower()]
+                    if record.address != ip_address
+                ]
+                
+                # Remove hostname entry if empty
+                if not self.dns_records[hostname.lower()]:
+                    del self.dns_records[hostname.lower()]
+        
+        # Remove from IP to hostnames mapping
+        del self.ip_to_hostnames[ip_address]
+        
+        # Update hosts file
+        self._update_hosts_file()
+        logger.info(f"Deleted DNS-only entry for IP {ip_address}")
+        return True
+    
     def get_lease(self, mac_address: str) -> Optional[DHCPLease]:
         """Get the current lease for a MAC address."""
         mac_address = mac_address.lower()

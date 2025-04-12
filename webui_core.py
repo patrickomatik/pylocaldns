@@ -10,6 +10,7 @@ import logging
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
+from urllib.parse import parse_qs, urlparse
 
 # Import our modules
 from webui_models import DNSRecord
@@ -176,7 +177,26 @@ class WebUIHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _update_static_entry(self, mac, ip, original_ip, hostnames):
-        """Update a static entry in the hosts file."""
+        """Update a static entry in the hosts file.
+        
+        This handles both MAC-based entries and DNS-only entries.
+        For MAC-based entries, the MAC address must exist in the hosts file.
+        For DNS-only entries (mac is empty string), only the IP is needed.
+        """
+        # Handle DNS-only entries (no MAC address)
+        if not mac:
+            # Update hostname to IP mappings
+            if original_ip in self.hosts_file.ip_to_hostnames:
+                # Remove the original IP from the hostname mapping
+                del self.hosts_file.ip_to_hostnames[original_ip]
+            
+            # Add the new hostname mapping and DNS records
+            if hostnames:
+                self.hosts_file.add_dns_only_entry(ip, hostnames)
+            
+            return
+        
+        # Handle MAC-based entries
         if mac not in self.hosts_file.mac_to_ip:
             raise ValueError(f"MAC address {mac} not found")
 
@@ -210,66 +230,18 @@ class WebUIHandler(BaseHTTPRequestHandler):
         self._update_hosts_file()
 
     def _update_hosts_file(self):
-        """Update the hosts file on disk with current entries."""
+        """Update the hosts file on disk with current entries.
+        
+        This method now directly delegates to the HostsFile._update_hosts_file method,
+        which maintains a consistent format for the hosts file.
+        """
         if not self.hosts_file or not self.hosts_file.file_path:
             return
-
-        # Read the original file to preserve comments and formatting
-        original_lines = []
-        with open(self.hosts_file.file_path, 'r') as f:
-            original_lines = f.readlines()
-
-        # Extract comments and non-entry lines
-        comments_and_blanks = []
-        for line in original_lines:
-            stripped = line.strip()
-            if not stripped or stripped.startswith('#'):
-                comments_and_blanks.append(line)
-
-        # Create new entries
-        entries = []
-        for mac, ip in self.hosts_file.mac_to_ip.items():
-            hostnames = self.hosts_file.ip_to_hostnames.get(ip, [])
-            if hostnames:
-                entries.append(f"{ip} {' '.join(hostnames)} [MAC={mac}]\n")
-            else:
-                entries.append(f"{ip} - [MAC={mac}]\n")
-
-        # Create additional DNS entries (without MAC addresses)
-        for ip, hostnames in self.hosts_file.ip_to_hostnames.items():
-            # Skip if this IP is already covered by a MAC entry
-            if any(ip == mac_ip for mac_ip in self.hosts_file.mac_to_ip.values()):
-                continue
-
-            entries.append(f"{ip} {' '.join(hostnames)}\n")
-
-        # Start with a header comment
-        output = ["# Hosts file updated by Network Server Web UI\n",
-                  f"# Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
-                  "#\n",
-                  "# Format for DNS entries:\n",
-                  "# <IP address> <hostname1> [hostname2] [hostname3] ...\n",
-                  "#\n",
-                  "# Format for DHCP entries with MAC address:\n",
-                  "# <IP address> <hostname1> [hostname2] ... [MAC=aa:bb:cc:dd:ee:ff]\n",
-                  "#\n"]
-
-        # Add some original comments if available
-        for i, line in enumerate(comments_and_blanks):
-            if i < 5:  # Limit to avoid duplicating too many comments
-                output.append(line)
-
-        # Add a separator
-        output.append("\n# Static and dynamic entries\n")
-
-        # Add all the entries
-        output.extend(entries)
-
-        # Write the updated file
-        with open(self.hosts_file.file_path, 'w') as f:
-            f.writelines(output)
-
-        # Force reload the hosts file
+            
+        # Use the hosts_file's built-in method to update the file
+        self.hosts_file._update_hosts_file()
+        
+        # Force reload the hosts file to ensure we have the latest data
         self.hosts_file.last_modified = 0
         self.hosts_file.load_file()
         
@@ -293,8 +265,17 @@ class WebUIHandler(BaseHTTPRequestHandler):
             from webui_edit import render_edit_lease_page
             render_edit_lease_page(self)
         elif self.path.startswith('/delete'):
-            from webui_handlers import handle_delete_request
-            handle_delete_request(self)
+            # Check if it's a DNS-only entry (has IP parameter but no MAC)
+            query = parse_qs(urlparse(self.path).query)
+            ip = query.get('ip', [''])[0]
+            mac = query.get('mac', [''])[0]
+            
+            if ip and not mac:
+                from webui_handlers import handle_delete_dns_entry
+                handle_delete_dns_entry(self)
+            else:
+                from webui_handlers import handle_delete_request
+                handle_delete_request(self)
         elif self.path.startswith('/delete-lease'):
             from webui_handlers import handle_delete_lease_request
             handle_delete_lease_request(self)
