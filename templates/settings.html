@@ -5,7 +5,7 @@
     <div class="flex justify-between items-center mb-4">
         <div>
             <h1 class="mt-0">Settings</h1>
-            <p class="mb-0 text-muted">Configure DHCP and network settings</p>
+            <p class="mb-0 text-muted">Configure network services and settings</p>
         </div>
     </div>
     
@@ -26,6 +26,13 @@
             {% endif %}
             
             <form method="post" action="{{ url_for('routes.settings') }}">
+                <h3><i class="fas fa-server"></i> Service Settings</h3>
+                
+                <div class="checkbox-group mb-3">
+                    <input type="checkbox" id="dns_enabled" name="dns_enabled" value="yes" {% if dns_enabled %}checked{% endif %}>
+                    <label for="dns_enabled">Enable DNS Server</label>
+                </div>
+                
                 <div class="checkbox-group mb-4">
                     <input type="checkbox" id="dhcp_enabled" name="dhcp_enabled" value="yes" {% if dhcp_enabled %}checked{% endif %}>
                     <label for="dhcp_enabled">Enable DHCP Server</label>

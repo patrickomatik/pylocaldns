@@ -51,14 +51,22 @@ class NetworkServer:
     """Combined DNS and DHCP server with Flask Web UI."""
 
     def __init__(self, hosts_file: HostsFile, dns_port: int = 53,
-                 interface: str = '0.0.0.0', dhcp_enable: bool = False,
-                 subnet_mask: str = '255.255.255.0', router: str = None,
-                 dns_servers: List[str] = None, webui_enable: bool = False,
-                 webui_port: int = 8080, api_enable: bool = False,
-                 api_port: int = 8081, api_token: str = None):
+                 interface: str = '0.0.0.0', dns_enable: bool = True,
+                 dhcp_enable: bool = False, subnet_mask: str = '255.255.255.0', 
+                 router: str = None, dns_servers: List[str] = None, 
+                 webui_enable: bool = False, webui_port: int = 8080, 
+                 api_enable: bool = False, api_port: int = 8081, 
+                 api_token: str = None):
         self.hosts = hosts_file
         self.interface = interface
-        self.dns_server = DNSServer(hosts_file, dns_port, interface)
+        self.dns_port = dns_port
+        
+        # DNS server
+        self.dns_enable = dns_enable
+        self.dns_server = None
+        
+        if dns_enable:
+            self.dns_server = DNSServer(hosts_file, dns_port, interface)
 
         # DHCP server
         self.dhcp_enable = dhcp_enable
@@ -119,12 +127,44 @@ class NetworkServer:
                 logger.error("Flask is required for the Web UI functionality")
                 # Terminate the application
                 sys.exit(1)
+    
+    def start_dns_server(self) -> None:
+        """Start the DNS server if enabled."""
+        if self.dns_enable:
+            if not self.dns_server:
+                self.dns_server = DNSServer(self.hosts, self.dns_port, self.interface)
+            
+            # Start in a new thread
+            dns_thread = threading.Thread(target=self.dns_server.start, daemon=True)
+            dns_thread.start()
+            logger.info("DNS server started")
+        else:
+            logger.info("DNS server is disabled")
+    
+    def stop_dns_server(self) -> None:
+        """Stop the DNS server if it's running."""
+        if self.dns_server:
+            self.dns_server.stop()
+            self.dns_server = None
+            logger.info("DNS server stopped")
+    
+    def set_dns_enabled(self, enabled: bool) -> None:
+        """Enable or disable the DNS server."""
+        if enabled != self.dns_enable:
+            self.dns_enable = enabled
+            
+            if enabled:
+                logger.info("Enabling DNS server...")
+                self.start_dns_server()
+            else:
+                logger.info("Disabling DNS server...")
+                self.stop_dns_server()
 
     def start(self) -> None:
         """Start the network services."""
-        # Start the DNS server in a new thread
-        dns_thread = threading.Thread(target=self.dns_server.start, daemon=True)
-        dns_thread.start()
+        # Start the DNS server if enabled
+        if self.dns_enable:
+            self.start_dns_server()
 
         # Start the DHCP server if enabled
         if self.dhcp_enable and self.dhcp_server:
@@ -207,7 +247,8 @@ class NetworkServer:
     def stop(self) -> None:
         """Stop all network services."""
         logger.info("Stopping network services...")
-        self.dns_server.stop()
+        if self.dns_enable and self.dns_server:
+            self.stop_dns_server()
 
         if self.dhcp_enable and self.dhcp_server:
             self.dhcp_server.stop()
@@ -235,6 +276,7 @@ def main() -> None:
 
     # DNS specific arguments
     parser.add_argument('--dns-port', type=int, default=53, help='DNS port to listen on (default: 53)')
+    parser.add_argument('--dns-disable', action='store_true', help='Disable DNS server')
 
     # DHCP specific arguments
     parser.add_argument('--dhcp-enable', action='store_true', help='Enable DHCP server')
@@ -282,6 +324,7 @@ def main() -> None:
             hosts_file=hosts_file,
             dns_port=args.dns_port,
             interface=args.interface,
+            dns_enable=not args.dns_disable,  # Enable DNS by default unless explicitly disabled
             dhcp_enable=args.dhcp_enable,
             subnet_mask=args.dhcp_subnet,
             router=args.dhcp_router,

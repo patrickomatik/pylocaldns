@@ -765,6 +765,7 @@ def settings():
     
     if request.method == 'POST':
         # Extract data from form
+        dns_enabled = request.form.get('dns_enabled') == 'yes'
         dhcp_enabled = request.form.get('dhcp_enabled') == 'yes'
         
         # Only process these if DHCP is enabled
@@ -832,6 +833,7 @@ def settings():
         if errors:
             flash("Settings validation failed", "error")
             return render_template('settings.html', 
+                                  dns_enabled=dns_enabled,
                                   dhcp_enabled=dhcp_enabled,
                                   dhcp_range_start=dhcp_range_start,
                                   dhcp_range_end=dhcp_range_end,
@@ -843,6 +845,7 @@ def settings():
         
         # Settings look good, store them in a config file
         config = {
+            'dns_enabled': dns_enabled,
             'dhcp_enabled': dhcp_enabled,
             'dhcp_range': [dhcp_range_start, dhcp_range_end] if dhcp_enabled else None,
             'subnet_mask': subnet_mask,
@@ -852,8 +855,13 @@ def settings():
         }
         
         # If we have access to the network server, update its settings directly
-        if network_server and hasattr(network_server, 'dhcp_server'):
+        if network_server:
             restart_needed = False
+            
+            # Update DNS settings
+            if hasattr(network_server, 'dns_enable') and network_server.dns_enable != config['dns_enabled']:
+                network_server.set_dns_enabled(config['dns_enabled'])
+                restart_needed = True
             
             # Update DHCP range in hosts file
             if hasattr(hosts_file, 'dhcp_range') and hosts_file.dhcp_range != config['dhcp_range']:
@@ -863,22 +871,22 @@ def settings():
                 restart_needed = True
             
             # Update subnet mask
-            if hasattr(network_server.dhcp_server, 'subnet_mask'):
+            if hasattr(network_server, 'dhcp_server') and network_server.dhcp_server and hasattr(network_server.dhcp_server, 'subnet_mask'):
                 network_server.dhcp_server.subnet_mask = config['subnet_mask']
                 restart_needed = True
             
             # Update router IP
-            if hasattr(network_server.dhcp_server, 'router'):
+            if hasattr(network_server, 'dhcp_server') and network_server.dhcp_server and hasattr(network_server.dhcp_server, 'router'):
                 network_server.dhcp_server.router = config['router_ip']
                 restart_needed = True
             
             # Update DNS servers
-            if hasattr(network_server.dhcp_server, 'dns_servers'):
+            if hasattr(network_server, 'dhcp_server') and network_server.dhcp_server and hasattr(network_server.dhcp_server, 'dns_servers'):
                 network_server.dhcp_server.dns_servers = config['dns_servers']
                 restart_needed = True
             
             # Update lease time
-            if hasattr(network_server.dhcp_server, 'default_lease_time'):
+            if hasattr(network_server, 'dhcp_server') and network_server.dhcp_server and hasattr(network_server.dhcp_server, 'default_lease_time'):
                 network_server.dhcp_server.default_lease_time = config['lease_time']
                 restart_needed = True
             
@@ -905,9 +913,13 @@ def settings():
     dns_servers = "8.8.8.8, 8.8.4.4"
     lease_time = str(DEFAULT_LEASE_TIME)
     dhcp_enabled = True
+    dns_enabled = True
     
     # Get values from the network server if available
     if network_server:
+        # DNS enabled status
+        dns_enabled = network_server.dns_enable if hasattr(network_server, 'dns_enable') else True
+        
         if hasattr(network_server, 'dhcp_server') and network_server.dhcp_server:
             if hasattr(network_server.dhcp_server, 'subnet_mask'):
                 subnet_mask = network_server.dhcp_server.subnet_mask
@@ -929,6 +941,7 @@ def settings():
         dhcp_enabled = network_server.dhcp_enable if hasattr(network_server, 'dhcp_enable') else True
     
     return render_template('settings.html',
+                          dns_enabled=dns_enabled,
                           dhcp_enabled=dhcp_enabled,
                           dhcp_range_start=dhcp_range_start,
                           dhcp_range_end=dhcp_range_end,
