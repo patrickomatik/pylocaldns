@@ -29,75 +29,125 @@ def render_scan_page(self, message=None, message_type=None):
 
     # Display message if any
     if message:
-        content += f'<div class="message {message_type}">{message}</div>'
+        icon_class = {
+            'success': 'fa-check-circle',
+            'error': 'fa-exclamation-circle',
+            'warning': 'fa-exclamation-triangle',
+            'info': 'fa-info-circle'
+        }.get(message_type, 'fa-info-circle')
+        
+        content += f'''
+        <div class="message {message_type}">
+            <i class="fas {icon_class}"></i>
+            <div>{message}</div>
+        </div>'''
 
     content += """
-        <h1>Network Scanner</h1>
-        <p>Scan your network to discover devices and prevent IP conflicts</p>
-        
-        <form method="post" action="/scan">
-            <p>This will scan the entire DHCP range for active devices. Discovered devices will be added to the 
-            configuration automatically. This process may take a few minutes depending on the size of your network.</p>
-            
-            <div class="form-group">
-                <button type="submit" class="btn btn-scan">Start Network Scan</button>
-                <a href="/" class="btn" style="background-color: #777;">Cancel</a>
+        <div class="content-container">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h1 class="mt-0">Network Scanner</h1>
+                    <p class="mb-0 text-muted">Discover devices and prevent IP conflicts</p>
+                </div>
             </div>
-        </form>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h2 class="card-title"><i class="fas fa-search"></i> Scan Network</h2>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="/scan">
+                        <p>This will scan the entire DHCP range for active devices. Discovered devices will be added to the 
+                        configuration automatically. This process may take a few minutes depending on the size of your network.</p>
+                        
+                        <div class="form-group mb-0 text-center">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-search"></i> Start Network Scan
+                            </button>
+                            <a href="/" class="btn btn-plain">
+                                <i class="fas fa-times"></i> Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
     """
     
     # Show previous scan results if available
     if hasattr(self, 'scan_results') and self.scan_results:
         content += """
-            <h2>Previous Scan Results</h2>
-            <table>
-                <tr>
-                    <th>IP Address</th>
-                    <th>MAC Address</th>
-                    <th>Status</th>
-                    <th>Open Ports</th>
-                    <th>Actions</th>
-                </tr>
-        """
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title"><i class="fas fa-list"></i> Previous Scan Results</h2>
+                    <div>
+                        <span class="badge badge-info">{count} Devices</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>IP Address</th>
+                                <th>MAC Address</th>
+                                <th>Status</th>
+                                <th>Open Ports</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        """.format(count=len(self.scan_results))
         
         for ip, data in self.scan_results.items():
             mac = data.get('mac', 'Unknown')
             status = data.get('status', 'Discovered')
             
-            status_badge = ''
-            if status == 'Added':
-                status_badge = '<span class="badge badge-success">Added</span>'
-            elif status == 'Already Configured':
-                status_badge = '<span class="badge badge-info">Already Configured</span>'
-            elif status == 'Pre-allocated':
-                status_badge = '<span class="badge badge-warning">Pre-allocated</span>'
-            else:
-                status_badge = '<span class="badge">Discovered</span>'
+            status_badge_class = {
+                'Added': 'badge-success',
+                'Already Configured': 'badge-info',
+                'Pre-allocated': 'badge-warning'
+            }.get(status, 'badge-secondary')
+            
+            status_badge = f'<span class="badge {status_badge_class}">{status}</span>'
             
             # Only show Edit button if we have a valid MAC address
             edit_button = ''
             if mac and mac != 'Unknown':
-                edit_button = f'<a href="/edit?mac={mac}" class="btn btn-edit">Edit</a>'
+                edit_button = f'''
+                <a href="/edit?mac={mac}" class="btn btn-sm btn-edit">
+                    <i class="fas fa-edit"></i> Edit
+                </a>'''
             
             # Get port information
             ports = data.get('ports', [])
             
             content += f"""
-                <tr>
-                    <td>{ip}</td>
-                    <td>{mac} {self._format_vendor(mac) if hasattr(self, '_format_vendor') else ''}</td>
-                    <td>{status_badge}</td>
-                    <td>
-                        {self._format_ports(ports) if hasattr(self, '_format_ports') else ', '.join(map(str, ports)) if ports else 'None detected'}
-                    </td>
-                    <td>
-                        {edit_button}
-                    </td>
-                </tr>
+                            <tr>
+                                <td><code>{ip}</code></td>
+                                <td>
+                                    <div class="flex items-center gap-2">
+                                        <i class="fas fa-network-wired text-muted text-sm"></i>
+                                        <span>{mac}</span>
+                                        {self._format_vendor(mac) if hasattr(self, '_format_vendor') else ''}
+                                    </div>
+                                </td>
+                                <td>{status_badge}</td>
+                                <td>
+                                    {self._format_ports(ports) if hasattr(self, '_format_ports') else ', '.join(map(str, ports)) if ports else '<span class="text-muted">None detected</span>'}
+                                </td>
+                                <td>
+                                    {edit_button}
+                                </td>
+                            </tr>
             """
         
-        content += "</table>"
+        content += """
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        """
     
+    content += "</div>" # Close content-container
     content += HTML_FOOTER
     return content.encode()
 
